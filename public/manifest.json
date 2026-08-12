@@ -1,0 +1,17 @@
+{
+  "short_name": "Rekap Dapur Pro",
+  "name": "Rekap Dapur Pro",
+  "icons": [
+    {
+      "src": "https://vkrgybebgnnaxzzcfjpn.supabase.co/storage/v1/object/public/LOGO/Rekap%20Dapur%20pro.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#eef2f6",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "portrait"
+}

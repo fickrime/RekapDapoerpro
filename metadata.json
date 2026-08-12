@@ -1,0 +1,7 @@
+{
+  "name": "Rekap Dapur Pro",
+  "description": "Aplikasi Manajemen Pesanan Supplier & Rekap Dapur Harian Pro",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
