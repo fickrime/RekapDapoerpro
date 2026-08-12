@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { 
   OrderItem, 
@@ -57,11 +58,25 @@ export default function App() {
         fetchSheetData<any>('transaksi'),
       ]);
 
+      if (pesananRes.error || transaksiRes.error) {
+        const errText = pesananRes.error || transaksiRes.error || 'Gagal koneksi ke Google Sheets';
+        console.warn('[GoogleSheets Sync] Skipped local data overwrite due to fetch error:', errText);
+        setGasError(errText);
+        if (showToastNotice) {
+          showToast(`Sinkronisasi Google Sheets Gagal: ${errText}`, 'error');
+        }
+        return;
+      }
+
       const mappedOrders = (pesananRes.data || []).map(mapRawOrder);
       const mappedInvoices = (transaksiRes.data || []).map(mapRawInvoice);
 
-      setOrders(mappedOrders);
-      setInvoices(mappedInvoices);
+      if (mappedOrders.length > 0) {
+        setOrders(mappedOrders);
+      }
+      if (mappedInvoices.length > 0) {
+        setInvoices(mappedInvoices);
+      }
 
       if (showToastNotice) {
         showToast('Data berhasil disinkronkan dari Google Sheets', 'success');
@@ -509,6 +524,28 @@ export default function App() {
         onRefreshGas={() => loadSpreadsheetData(true)}
         isSyncingGas={isSyncingGas}
       />
+
+      {/* Google Sheets Sync Error Alert Banner */}
+      {gasError && (
+        <div className="max-w-5xl w-full mx-auto px-3 my-2 font-sans no-print">
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-950 rounded-2xl p-3 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-sm backdrop-blur-md">
+            <div className="flex items-start gap-2 min-w-0">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <span className="font-extrabold block sm:inline">Koneksi Google Sheets: </span>
+                <span className="font-medium text-amber-900">{gasError}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-[11px] whitespace-nowrap transition-all shadow-sm flex-shrink-0 cursor-pointer self-end sm:self-auto"
+            >
+              Atur URL Web App
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6">

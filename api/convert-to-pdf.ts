@@ -1,4 +1,4 @@
-import { convertDocxToPdfWithCloudConvert } from '../src/lib/cloudConvert';
+import { convertDocxToPdfWithCloudConvert } from './lib/cloudConvert.js';
 
 export const config = {
   api: {

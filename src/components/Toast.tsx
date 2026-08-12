@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
-import { CheckCircle2, Trash2, Edit3, X } from 'lucide-react';
+import { CheckCircle2, Trash2, Edit3, AlertCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export type ToastType = 'success' | 'edit' | 'delete';
+export type ToastType = 'success' | 'edit' | 'delete' | 'error';
 
 export interface ToastMessage {
   id: string;
@@ -28,6 +28,8 @@ export const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
 
   const getBgClass = () => {
     switch (toast.type) {
+      case 'error':
+        return 'bg-slate-900 border-rose-500/40 text-white';
       case 'delete':
         return 'bg-slate-900 border-rose-500/40 text-white';
       case 'edit':
@@ -40,6 +42,8 @@ export const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
 
   const getIcon = () => {
     switch (toast.type) {
+      case 'error':
+        return <AlertCircle className="w-4 h-4 text-rose-400" />;
       case 'delete':
         return <Trash2 className="w-4 h-4 text-rose-400" />;
       case 'edit':

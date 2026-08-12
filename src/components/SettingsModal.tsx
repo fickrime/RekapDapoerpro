@@ -42,6 +42,13 @@ import {
   downloadDocxInvoice, 
   INVOICE_TEMPLATES 
 } from '../lib/docxTemplate';
+import {
+  getGasBaseUrl,
+  setGasBaseUrl,
+  fetchSheetData,
+  GAS_BASE_URL,
+  GAS_TOKEN,
+} from '../lib/googleSheets';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -70,7 +77,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateOrders,
   onDeleteAllData,
 }) => {
-  const [activeTab, setActiveTab] = useState<'dapur' | 'toko' | 'pemasok' | 'template' | 'supabase' | 'install'>('dapur');
+  const [activeTab, setActiveTab] = useState<'dapur' | 'toko' | 'pemasok' | 'template' | 'googlesheets' | 'supabase' | 'install'>('dapur');
 
   // Form states for adding/editing
   const [newKitchenName, setNewKitchenName] = useState('');
@@ -99,6 +106,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     localStorage.getItem('custom_docx_template_name')
   );
   const [copiedStorageSql, setCopiedStorageSql] = useState(false);
+
+  // Google Sheets states
+  const [gasUrlInput, setGasUrlInput] = useState(getGasBaseUrl());
+  const [gasTokenInput, setGasTokenInput] = useState(localStorage.getItem('gas_secret_token') || GAS_TOKEN);
+  const [testingGas, setTestingGas] = useState(false);
+  const [gasTestStatus, setGasTestStatus] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleSaveGasSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setGasBaseUrl(gasUrlInput);
+    if (gasTokenInput && gasTokenInput.trim()) {
+      localStorage.setItem('gas_secret_token', gasTokenInput.trim());
+    } else {
+      localStorage.removeItem('gas_secret_token');
+    }
+    setGasTestStatus({
+      success: true,
+      message: 'Pengaturan Google Apps Script URL & Token berhasil disimpan!',
+    });
+  };
+
+  const handleTestGasConnection = async () => {
+    setTestingGas(true);
+    setGasTestStatus(null);
+    setGasBaseUrl(gasUrlInput);
+    const res = await fetchSheetData('pesanan');
+    if (res.error) {
+      setGasTestStatus({
+        success: false,
+        message: `Koneksi Google Sheets Gagal: ${res.error}`,
+      });
+    } else {
+      setGasTestStatus({
+        success: true,
+        message: `Koneksi Berhasil! Terhubung ke Google Sheets (${res.data.length} baris data pesanan terdeteksi).`,
+      });
+    }
+    setTestingGas(false);
+  };
+
+  const handleResetGasUrl = () => {
+    setGasBaseUrl(null);
+    setGasUrlInput(GAS_BASE_URL);
+    localStorage.removeItem('gas_secret_token');
+    setGasTokenInput(GAS_TOKEN);
+    setGasTestStatus({
+      success: true,
+      message: 'URL Google Apps Script di-reset ke URL default.',
+    });
+  };
 
   // PWA Install state
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -445,6 +502,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               <FileText className="w-3.5 h-3.5 text-blue-600" />
               Template PDF/DOCX
+            </button>
+            <button
+              onClick={() => setActiveTab('googlesheets')}
+              className={`flex-1 min-w-[125px] py-3 px-2 flex items-center justify-center gap-1 border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'googlesheets'
+                  ? 'border-indigo-600 text-indigo-700 bg-white font-black'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+              Google Sheets
             </button>
             <button
               onClick={() => setActiveTab('supabase')}
@@ -889,6 +957,111 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <p className="pl-3">{`{no} | {namaBarang} | {banyaknya} | {harga} | {jumlah}`}</p>
                     <p className="text-slate-300">{`{/items}`}</p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TAB: GOOGLE SHEETS INTEGRATION */}
+            {activeTab === 'googlesheets' && (
+              <div className="space-y-5 text-xs text-slate-700 font-sans">
+                <form onSubmit={handleSaveGasSettings} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <div className="flex items-center gap-2 text-slate-900 font-black text-xs uppercase tracking-wider">
+                      <Receipt className="w-4 h-4 text-emerald-600" />
+                      <span>Google Apps Script Web App (Spreadsheet API)</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                    Pengaturan endpoint Google Apps Script untuk sinkronisasi otomatis sheet <strong>"pesanan"</strong> &amp; <strong>"transaksi"</strong>.
+                  </p>
+
+                  <div className="space-y-1">
+                    <label className="text-[10.5px] font-extrabold text-slate-800 uppercase">
+                      Google Apps Script Web App URL:
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://script.google.com/macros/s/.../exec"
+                      value={gasUrlInput}
+                      onChange={(e) => setGasUrlInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10.5px] font-extrabold text-slate-800 uppercase">
+                      Secret Token Backend (Opsional / Default: Gakusah):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Gakusah"
+                      value={gasTokenInput}
+                      onChange={(e) => setGasTokenInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Simpan Pengaturan</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestGasConnection}
+                      disabled={testingGas}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${testingGas ? 'animate-spin' : ''}`} />
+                      <span>{testingGas ? 'Menguji...' : 'Uji Koneksi Sheets'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleResetGasUrl}
+                      className="px-3 py-2 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-700 font-bold rounded-xl transition-all text-xs cursor-pointer ml-auto"
+                    >
+                      Reset Default URL
+                    </button>
+                  </div>
+
+                  {gasTestStatus && (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-bold flex items-start gap-2 ${
+                        gasTestStatus.success
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          : 'bg-rose-100 text-rose-900 border border-rose-300'
+                      }`}
+                    >
+                      {gasTestStatus.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                      )}
+                      <span className="leading-snug">{gasTestStatus.message}</span>
+                    </div>
+                  )}
+                </form>
+
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2 text-[11px] text-amber-900 font-medium">
+                  <div className="flex items-center gap-1.5 font-extrabold text-amber-950 uppercase text-[10px]">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span>Petunjuk Publikasi Google Apps Script (Anti 404 Error)</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 leading-relaxed text-slate-700">
+                    <li>Buka Google Apps Script editor proyek Anda.</li>
+                    <li>Klik tombol <strong>Deploy &gt; New Deployment</strong> di sudut kanan atas.</li>
+                    <li>Pilih jenis deployment: <strong>Web App</strong>.</li>
+                    <li>Atur <i>Execute as</i>: <strong>Me</strong>.</li>
+                    <li>Atur <i>Who has access</i>: <strong>Anyone</strong> (Penting agar web app tidak mengembalikan 404/login error).</li>
+                    <li>Salin URL Web App berakhiran <code>/exec</code> ke kolom input di atas.</li>
+                  </ol>
                 </div>
               </div>
             )}

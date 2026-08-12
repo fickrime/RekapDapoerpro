@@ -5,6 +5,22 @@ export const GAS_BASE_URL =
 
 export const GAS_TOKEN = (import.meta.env.VITE_GAS_TOKEN as string) || 'Gakusah';
 
+export function getGasBaseUrl(): string {
+  const customUrl = localStorage.getItem('gas_web_app_url');
+  if (customUrl && customUrl.trim().startsWith('https://script.google.com/')) {
+    return customUrl.trim();
+  }
+  return (import.meta.env.VITE_GAS_BASE_URL as string) || GAS_BASE_URL;
+}
+
+export function setGasBaseUrl(url: string | null): void {
+  if (!url || !url.trim()) {
+    localStorage.removeItem('gas_web_app_url');
+  } else {
+    localStorage.setItem('gas_web_app_url', url.trim());
+  }
+}
+
 export interface AddRowResponse {
   success: boolean;
   message?: string;
@@ -44,7 +60,8 @@ export async function addRow(
   console.log('[GoogleSheets addRow] Full POST Payload:', JSON.stringify(payload, null, 2));
 
   try {
-    const response = await fetch(GAS_BASE_URL, {
+    const baseUrl = getGasBaseUrl();
+    const response = await fetch(baseUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
@@ -215,7 +232,8 @@ export async function fetchSheetData<T = any>(
   sheet: 'pesanan' | 'transaksi'
 ): Promise<{ data: T[]; error: string | null }> {
   try {
-    const url = `${GAS_BASE_URL}?sheet=${encodeURIComponent(sheet)}`;
+    const baseUrl = getGasBaseUrl();
+    const url = `${baseUrl}?sheet=${encodeURIComponent(sheet)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -224,6 +242,11 @@ export async function fetchSheetData<T = any>(
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(
+          `Google Sheets Web App HTTP 404 (Deployment ID Google Apps Script tidak ditemukan, expired, atau memerlukan izin 'Anyone')`
+        );
+      }
       throw new Error(`HTTP Error status ${response.status}`);
     }
 
