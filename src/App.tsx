@@ -226,15 +226,18 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
 
+    // Always preserve data locally
+    setOrders((prev) => [duplicated, ...prev]);
+
     setIsSyncingGas(true);
     const res = await addRow('pesanan', buildPesananPayload(duplicated));
     setIsSyncingGas(false);
 
     if (res.success) {
-      setOrders((prev) => [duplicated, ...prev]);
       showToast('Pesanan berhasil diduplikasi & tersimpan ke Google Sheets', 'success');
     } else {
-      alert(`Gagal menyimpan duplikasi ke Google Sheets:\n${res.error || 'Unknown error'}`);
+      setGasError(res.error || 'Gagal tersambung ke Google Sheets');
+      showToast(`Pesanan diduplikasi di HP/Lokal! (Gagal sync Google Sheets: ${res.error || '404 Error'})`, 'error');
     }
   };
 
@@ -263,24 +266,25 @@ export default function App() {
     const itemsToAdd = Array.isArray(orderData) ? orderData : [orderData];
     const createdDate = new Date().toISOString();
 
+    const newOrdersAdded: OrderItem[] = itemsToAdd.map((item, idx) => ({
+      ...item,
+      id: `ord-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: createdDate,
+    }));
+
+    // Local-First: ALWAYS save new orders to local state & localStorage immediately
+    setOrders((prev) => [...newOrdersAdded, ...prev]);
+
     setIsSyncingGas(true);
     let successCount = 0;
     let lastError = '';
-    const newOrdersAdded: OrderItem[] = [];
 
-    for (let idx = 0; idx < itemsToAdd.length; idx++) {
-      const item = itemsToAdd[idx];
-      const newOrderItem: OrderItem = {
-        ...item,
-        id: `ord-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-        createdAt: createdDate,
-      };
-
+    for (let idx = 0; idx < newOrdersAdded.length; idx++) {
+      const newOrderItem = newOrdersAdded[idx];
       const res = await addRow('pesanan', buildPesananPayload(newOrderItem));
 
       if (res.success) {
         successCount++;
-        newOrdersAdded.push(newOrderItem);
       } else {
         lastError = res.error || 'Gagal menyimpan ke Google Sheets';
       }
@@ -288,15 +292,14 @@ export default function App() {
 
     setIsSyncingGas(false);
 
-    if (successCount > 0) {
-      setOrders((prev) => [...newOrdersAdded, ...prev]);
-      if (successCount === itemsToAdd.length) {
-        showToast(`${successCount} pesanan berhasil ditambahkan & tersimpan ke Google Sheets`, 'success');
-      } else {
-        alert(`${successCount} dari ${itemsToAdd.length} pesanan tersimpan. Sebagian gagal: ${lastError}`);
-      }
+    if (successCount === newOrdersAdded.length) {
+      showToast(`${successCount} pesanan berhasil ditambahkan & tersimpan ke Google Sheets`, 'success');
+    } else if (successCount > 0) {
+      setGasError(lastError);
+      showToast(`Tersimpan lokal. ${successCount}/${newOrdersAdded.length} terkirim ke Sheets (${lastError})`, 'error');
     } else {
-      alert(`Gagal menyimpan pesanan ke Google Sheets:\n${lastError}\n\nData TIDAK tersimpan.`);
+      setGasError(lastError);
+      showToast(`Pesanan TERSIMPAN DI HP/LOKAL! (Gagal sync Google Sheets: ${lastError})`, 'error');
     }
   };
 
@@ -429,11 +432,14 @@ export default function App() {
     const res = await addRow('transaksi', txData);
     setIsSyncingGas(false);
 
+    // ALWAYS save invoice record locally so data is never lost
+    setInvoices((prev) => [newRecord, ...prev]);
+
     if (res.success) {
-      setInvoices((prev) => [newRecord, ...prev]);
       showToast('Invoice & Transaksi tersimpan ke Google Sheets', 'success');
     } else {
-      alert(`Gagal menyimpan transaksi ke Google Sheets:\n${res.error || 'Unknown error'}\n\nTransaksi tidak tersimpan.`);
+      setGasError(res.error || 'Gagal koneksi ke Google Sheets');
+      showToast(`Invoice TERSIMPAN DI HP/LOKAL! (Gagal sync Google Sheets: ${res.error || 'Error'})`, 'error');
     }
   };
 
@@ -459,32 +465,33 @@ export default function App() {
   // Handlers for WhatsApp Text Import
 
   const handleImportParsedItems = async (parsedResults: TextParseResult[], targetDate: string) => {
+    const newOrdersAdded: OrderItem[] = parsedResults.map((res, index) => ({
+      id: `ord-imp-${Date.now()}-${index}`,
+      namaBarang: res.namaBarang,
+      qty: res.qty,
+      hargaBeli: res.hargaBeli,
+      hargaJual: res.hargaJual,
+      toko: res.toko || stores[0]?.nama || 'HTG',
+      tujuanDapur: res.tujuanDapur || kitchens[0]?.nama || 'Siliragung',
+      pemasok: res.pemasok || pemasokList[0] || 'Pemasok 1',
+      status: 'pending',
+      tanggal: targetDate || selectedDate,
+      createdAt: new Date().toISOString(),
+    }));
+
+    // Local-First: ALWAYS save imported items locally first
+    setOrders((prev) => [...newOrdersAdded, ...prev]);
+
     setIsSyncingGas(true);
     let successCount = 0;
     let lastError = '';
-    const newOrdersAdded: OrderItem[] = [];
 
-    for (let index = 0; index < parsedResults.length; index++) {
-      const res = parsedResults[index];
-      const newOrderItem: OrderItem = {
-        id: `ord-imp-${Date.now()}-${index}`,
-        namaBarang: res.namaBarang,
-        qty: res.qty,
-        hargaBeli: res.hargaBeli,
-        hargaJual: res.hargaJual,
-        toko: res.toko || stores[0]?.nama || 'HTG',
-        tujuanDapur: res.tujuanDapur || kitchens[0]?.nama || 'Siliragung',
-        pemasok: res.pemasok || pemasokList[0] || 'Pemasok 1',
-        status: 'pending',
-        tanggal: targetDate || selectedDate,
-        createdAt: new Date().toISOString(),
-      };
-
+    for (let index = 0; index < newOrdersAdded.length; index++) {
+      const newOrderItem = newOrdersAdded[index];
       const saveRes = await addRow('pesanan', buildPesananPayload(newOrderItem));
 
       if (saveRes.success) {
         successCount++;
-        newOrdersAdded.push(newOrderItem);
       } else {
         lastError = saveRes.error || 'Gagal menyimpan ke Google Sheets';
       }
@@ -492,11 +499,11 @@ export default function App() {
 
     setIsSyncingGas(false);
 
-    if (successCount > 0) {
-      setOrders((prev) => [...newOrdersAdded, ...prev]);
+    if (successCount === newOrdersAdded.length) {
       showToast(`${successCount} item import berhasil tersimpan ke Google Sheets`, 'success');
     } else {
-      alert(`Gagal mengimpor item ke Google Sheets:\n${lastError}`);
+      setGasError(lastError);
+      showToast(`${newOrdersAdded.length} item TERSIMPAN DI HP/LOKAL! (${successCount}/${newOrdersAdded.length} sync Sheets: ${lastError})`, 'error');
     }
   };
 

@@ -70,6 +70,11 @@ export async function addRow(
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(
+          `Google Sheets Web App HTTP 404 (URL Google Apps Script tidak ditemukan, expired, atau belum di-deploy dengan akses 'Anyone')`
+        );
+      }
       throw new Error(`HTTP Error status: ${response.status}`);
     }
 

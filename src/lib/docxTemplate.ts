@@ -425,13 +425,19 @@ export async function exportInvoicePdf(
       clearTimeout(timeoutId);
 
       if (!convertResponse.ok) {
+        const errText = await convertResponse.text().catch(() => '');
         let errorMsg = `HTTP ${convertResponse.status}: Gagal konversi PDF.`;
-        try {
-          const errJson = await convertResponse.json();
-          if (errJson.error) errorMsg = errJson.error;
-        } catch (_) {
-          const errText = await convertResponse.text().catch(() => '');
-          if (errText) errorMsg = `HTTP ${convertResponse.status}: ${errText}`;
+        if (errText) {
+          try {
+            const errJson = JSON.parse(errText);
+            if (errJson.error) {
+              errorMsg = errJson.error;
+            } else {
+              errorMsg = `HTTP ${convertResponse.status}: ${errText}`;
+            }
+          } catch (_) {
+            errorMsg = `HTTP ${convertResponse.status}: ${errText}`;
+          }
         }
         throw new Error(errorMsg);
       }
@@ -452,17 +458,13 @@ export async function exportInvoicePdf(
         continue;
       }
 
-      if (isNetworkOrTimeout) {
-        throw new Error('Koneksi internet lambat atau terputus. Silakan periksa jaringan Anda dan coba lagi.');
-      }
-
-      console.error('Konversi PDF via CloudConvert API gagal:', pdfErr);
-      throw new Error(pdfErr?.message || pdfErr);
+      console.warn('Konversi PDF via CloudConvert API gagal atau 500, mencoba fallback konversi PDF di browser:', pdfErr);
+      return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
     }
   }
 
   if (!convertResponse || !convertResponse.ok) {
-    throw new Error('Gagal mengonversi PDF, tidak ada respons valid dari server.');
+    return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
   }
 
   onProgress?.('Mengunduh file PDF...');
@@ -484,6 +486,72 @@ export async function exportInvoicePdf(
     pdfUrl,
     fileName,
   };
+}
+
+/**
+ * Client-Side PDF Generation Fallback using docx-preview + html2pdf
+ * Runs completely in browser, requires no server or external API keys.
+ */
+export async function renderDocxToPdfClientSide(
+  docxBlob: Blob,
+  baseFileName: string,
+  onProgress?: (statusMsg: string) => void
+): Promise<{ pdfBlob: Blob; pdfUrl: string; fileName: string }> {
+  onProgress?.('Mencetak PDF di browser (Client-Side)...');
+  console.log('[Client PDF Fallback] Rendering DOCX to PDF in browser via docx-preview + html2pdf...');
+
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '-9999px';
+  container.style.width = '800px';
+  container.style.background = '#ffffff';
+  container.style.padding = '24px';
+  container.style.boxSizing = 'border-box';
+  container.style.color = '#000000';
+  document.body.appendChild(container);
+
+  try {
+    const arrayBuffer = await docxBlob.arrayBuffer();
+    await renderAsync(arrayBuffer, container, undefined, {
+      inWrapper: false,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      breakPages: true,
+    });
+
+    onProgress?.('Memproses halaman PDF...');
+
+    const fileName = `${baseFileName}.pdf`;
+    const opt = {
+      margin: 8,
+      filename: fileName,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
+    };
+
+    const pdfBlob: Blob = await html2pdf().set(opt).from(container).output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+
+    try {
+      saveAs(pdfBlob, fileName);
+    } catch (e) {
+      console.warn('[Client PDF Fallback] saveAs failed or blocked:', e);
+    }
+
+    onProgress?.('Selesai (PDF Browser)!');
+
+    return {
+      pdfBlob,
+      pdfUrl,
+      fileName,
+    };
+  } finally {
+    if (document.body.contains(container)) {
+      document.body.removeChild(container);
+    }
+  }
 }
 
 /**
