@@ -90,6 +90,43 @@ function formatDocxtemplaterErrors(err: any, storeName: string): string {
   return `TemplateError pada template "${storeName}": ${err?.message || err}`;
 }
 
+export function sanitizeDocxXml(zip: PizZip): void {
+  const xmlFiles = Object.keys(zip.files).filter((fileName) =>
+    fileName.startsWith('word/') && fileName.endsWith('.xml')
+  );
+
+  for (const xmlPath of xmlFiles) {
+    const docXmlFile = zip.file(xmlPath);
+    if (!docXmlFile) continue;
+
+    let xmlContent = docXmlFile.asText();
+
+    // 1. Fix "i t e m s", "it em s", "it  em s", "item s", "it ems" typos inside opening or closing loop tags
+    // e.g. {#it em s}, {/it em s}, {{#it em s}}, {{/it em s}}, {# it em s }, etc.
+    xmlContent = xmlContent.replace(
+      /(\{#|\{\{#|\{\/|\{\{\/)\s*i(?:<[^>]+>|\s)*t(?:<[^>]+>|\s)*e(?:<[^>]+>|\s)*m(?:<[^>]+>|\s)*s\s*(\}|\}\})/gi,
+      '$1items$2'
+    );
+
+    // 2. Fix other potential spaced loop tags (e.g. orders, barang, table)
+    xmlContent = xmlContent.replace(
+      /(\{#|\{\{#|\{\/|\{\{\/)\s*o(?:<[^>]+>|\s)*r(?:<[^>]+>|\s)*d(?:<[^>]+>|\s)*e(?:<[^>]+>|\s)*r(?:<[^>]+>|\s)*s\s*(\}|\}\})/gi,
+      '$1orders$2'
+    );
+    xmlContent = xmlContent.replace(
+      /(\{#|\{\{#|\{\/|\{\{\/)\s*b(?:<[^>]+>|\s)*a(?:<[^>]+>|\s)*r(?:<[^>]+>|\s)*a(?:<[^>]+>|\s)*n(?:<[^>]+>|\s)*g\s*(\}|\}\})/gi,
+      '$1barang$2'
+    );
+
+    // 3. Trim leading/trailing whitespace inside single or double curly braces tags
+    // e.g. {{ # items }} -> {{#items}}, { / items } -> {/items}, {{ total }} -> {{total}}
+    xmlContent = xmlContent.replace(/(\{\{#?|\{#?)\s+([a-zA-Z0-9_\-\.\$]+)\s+(\}\}|\})/g, '$1$2$3');
+    xmlContent = xmlContent.replace(/(\{\{\/?|\{\/?)\s+([a-zA-Z0-9_\-\.\$]+)\s+(\}\}|\})/g, '$1$2$3');
+
+    zip.file(xmlPath, xmlContent);
+  }
+}
+
 /**
  * Prepare and filter transaction items strictly by store, kitchen, and date
  */
@@ -297,6 +334,7 @@ export async function exportInvoicePdf(
   // 3. Process docx with Docxtemplater
   onProgress?.('Mengisi template invoice...');
   const zip = new PizZip(arrayBuffer);
+  sanitizeDocxXml(zip);
   let docxBlob: Blob;
 
   try {
@@ -316,6 +354,7 @@ export async function exportInvoicePdf(
     console.warn(`Docxtemplater failed with {{ delimiters }}, trying { delimiters } fallback...`, errDouble);
     try {
       const zip2 = new PizZip(arrayBuffer);
+      sanitizeDocxXml(zip2);
       const doc2 = new Docxtemplater(zip2, {
         paragraphLoop: true,
         linebreaks: true,
@@ -327,7 +366,7 @@ export async function exportInvoicePdf(
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
     } catch (errSingle: any) {
-      const errorDetails = formatDocxtemplaterErrors(errDouble, storeName);
+      const errorDetails = formatDocxtemplaterErrors(errSingle || errDouble, storeName);
       throw new Error(errorDetails);
     }
   }

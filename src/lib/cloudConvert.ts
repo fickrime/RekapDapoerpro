@@ -44,10 +44,67 @@ function isNetworkOrTimeoutError(err: any): boolean {
     msg.includes('econnreset') ||
     msg.includes('etimedout') ||
     msg.includes('socket') ||
+    msg.includes('500') ||
     msg.includes('502') ||
     msg.includes('503') ||
     msg.includes('504')
   );
+}
+
+function parseCloudConvertError(data: any, textFallback = ''): { message: string; code?: string } {
+  let message = textFallback;
+  let code: string | undefined;
+
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch (_) {}
+  }
+
+  if (typeof data === 'object' && data !== null) {
+    if (data.message) message = data.message;
+    if (data.code) code = data.code;
+    if (data.errors) {
+      if (typeof data.errors === 'object') {
+        const errorDetails = Object.entries(data.errors)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          .join('; ');
+        if (errorDetails) message += ` (${errorDetails})`;
+      }
+    }
+  }
+
+  return { message: message || 'Unknown CloudConvert Error', code };
+}
+
+async function retryCloudConvertTask(taskId: string, apiKey: string): Promise<boolean> {
+  try {
+    console.log(`[CloudConvert API Retry Task] Sending retry request for task ID: ${taskId} to POST https://api.cloudconvert.com/v2/tasks/${taskId}/retry...`);
+    const res = await fetchWithTimeout(
+      `https://api.cloudconvert.com/v2/tasks/${taskId}/retry`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+      15000
+    );
+
+    if (res.ok) {
+      console.log(`[CloudConvert API Retry Task] Task ${taskId} successfully queued for retry on CloudConvert.`);
+      return true;
+    } else {
+      const errText = await res.text();
+      console.warn(`[CloudConvert API Retry Task Failed] HTTP ${res.status}:`, errText);
+      return false;
+    }
+  } catch (err: any) {
+    console.warn(`[CloudConvert API Retry Task Exception]:`, err?.message || err);
+    return false;
+  }
 }
 
 async function executeCloudConvertJobOnce(
@@ -105,14 +162,10 @@ async function executeCloudConvertJobOnce(
       );
     }
 
-    let errorDetail = errText;
-    try {
-      const parsed = JSON.parse(errText);
-      if (parsed.message) errorDetail = parsed.message;
-      if (parsed.errors) errorDetail += ' | ' + JSON.stringify(parsed.errors);
-    } catch (_) {}
+    const { message: errMessage, code: errCode } = parseCloudConvertError(errText, errText);
+    const codeTag = errCode ? ` [Code: ${errCode}]` : '';
 
-    throw new Error(`CloudConvert API Error (${createJobRes.status}): ${errorDetail}`);
+    throw new Error(`CloudConvert API Error (${createJobRes.status})${codeTag}: ${errMessage}`);
   }
 
   const jobJson = await createJobRes.json();
@@ -151,10 +204,12 @@ async function executeCloudConvertJobOnce(
   );
 
   if (!uploadRes.ok) {
-    const uploadErr = await uploadRes.text();
+    const uploadErrText = await uploadRes.text();
     console.error(`[CloudConvert API Error - Upload] Status Code: ${uploadRes.status}`);
-    console.error(`[CloudConvert Upload Response Body]:`, uploadErr);
-    throw new Error(`Gagal mengunggah file docx ke CloudConvert (Status ${uploadRes.status}): ${uploadErr}`);
+    console.error(`[CloudConvert Upload Response Body]:`, uploadErrText);
+    const { message: errMessage, code: errCode } = parseCloudConvertError(uploadErrText, uploadErrText);
+    const codeTag = errCode ? ` [Code: ${errCode}]` : '';
+    throw new Error(`Gagal mengunggah file docx ke CloudConvert (Status ${uploadRes.status})${codeTag}: ${errMessage}`);
   }
 
   // 3. Poll job status
@@ -163,6 +218,7 @@ async function executeCloudConvertJobOnce(
   let status = 'processing';
   let exportTask: any = null;
   let attempts = 0;
+  let taskRetries = 0;
   const maxAttempts = 45; // ~90 seconds total polling time
 
   while (status !== 'finished' && status !== 'error' && attempts < maxAttempts) {
@@ -192,8 +248,25 @@ async function executeCloudConvertJobOnce(
       if (status === 'error') {
         console.error('[CloudConvert Job Detailed Errors]:', JSON.stringify(checkJson.data, null, 2));
         const failedTask = checkJson.data?.tasks?.find((t: any) => t.status === 'error');
-        const errorMsg = failedTask?.message || failedTask?.code || 'Proses konversi PDF di CloudConvert gagal.';
-        throw new Error(`Gagal Konversi PDF (CloudConvert): ${errorMsg}`);
+        const { message: errMessage, code: errCode } = parseCloudConvertError(
+          failedTask,
+          'Proses konversi PDF di CloudConvert gagal.'
+        );
+        const codeTag = errCode ? ` [Code: ${errCode}]` : '';
+
+        // Check if task can be retried via CloudConvert Task Retry endpoint
+        if (failedTask?.id && taskRetries < 1) {
+          taskRetries++;
+          onStatusChange?.(`Mencoba pemulihan otomatis (Retry Task ID: ${failedTask.id}) di CloudConvert...`);
+          const retrySuccess = await retryCloudConvertTask(failedTask.id, cleanKey);
+          if (retrySuccess) {
+            status = 'processing';
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+        }
+
+        throw new Error(`Gagal Konversi PDF (CloudConvert)${codeTag}: ${errMessage}`);
       }
 
       if (status === 'finished') {

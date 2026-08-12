@@ -4,11 +4,13 @@ import {
   getCustomTemplateUrl,
   setCustomTemplateUrl,
   prepareScopedInvoiceData,
+  sanitizeDocxXml,
   TEMPLATE_URLS,
 } from './docxTemplate';
 import { compressDocxImagesClient } from './clientDocxCompressor';
 import { generateInvoiceNumber, formatRupiah, parseIndonesianNumber } from './formatters';
 import JSZip from 'jszip';
+import PizZip from 'pizzip';
 
 describe('Invoice Processing & Template TDD Tests', () => {
   beforeEach(() => {
@@ -136,6 +138,31 @@ describe('Invoice Processing & Template TDD Tests', () => {
       expect(firstItem.namaBarang).toBe('Ayam Potong');
       expect(firstItem.harga).toBe(formatRupiah(32000));
       expect(firstItem.jumlah).toBe(formatRupiah(1600000));
+    });
+  });
+
+  describe('XML Sanitization (sanitizeDocxXml)', () => {
+    it('should clean spaced tag typos like {#it em s} into {#items}', () => {
+      const pzip = new PizZip();
+      const mockXml = '<w:document><w:body><w:t>{#it em s}</w:t><w:t>{/items}</w:t></w:body></w:document>';
+      pzip.file('word/document.xml', mockXml);
+
+      sanitizeDocxXml(pzip);
+
+      const cleanedXml = pzip.file('word/document.xml')?.asText();
+      expect(cleanedXml).toBe('<w:document><w:body><w:t>{#items}</w:t><w:t>{/items}</w:t></w:body></w:document>');
+    });
+
+    it('should handle spaced tag typos with XML formatting elements inside', () => {
+      const pzip = new PizZip();
+      const mockXml = '<w:document><w:body><w:t>{#it</w:t><w:t> em s}</w:t><w:t>{/ items }</w:t></w:body></w:document>';
+      pzip.file('word/document.xml', mockXml);
+
+      sanitizeDocxXml(pzip);
+
+      const cleanedXml = pzip.file('word/document.xml')?.asText();
+      expect(cleanedXml).toContain('{#items}');
+      expect(cleanedXml).toContain('{/items}');
     });
   });
 
