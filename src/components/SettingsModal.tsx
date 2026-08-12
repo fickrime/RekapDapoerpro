@@ -112,6 +112,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [gasTokenInput, setGasTokenInput] = useState(localStorage.getItem('gas_secret_token') || GAS_TOKEN);
   const [testingGas, setTestingGas] = useState(false);
   const [gasTestStatus, setGasTestStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [copiedGasCode, setCopiedGasCode] = useState(false);
+  const [showGasCodeText, setShowGasCodeText] = useState(false);
 
   const handleSaveGasSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1049,19 +1051,204 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   )}
                 </form>
 
-                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2 text-[11px] text-amber-900 font-medium">
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-3 text-[11px] text-amber-900 font-medium">
                   <div className="flex items-center gap-1.5 font-extrabold text-amber-950 uppercase text-[10px]">
                     <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                    <span>Petunjuk Publikasi Google Apps Script (Anti 404 Error)</span>
+                    <span>Petunjuk Publikasi Google Apps Script (Anti Error 404 & TypeError)</span>
                   </div>
-                  <ol className="list-decimal list-inside space-y-1 leading-relaxed text-slate-700">
-                    <li>Buka Google Apps Script editor proyek Anda.</li>
-                    <li>Klik tombol <strong>Deploy &gt; New Deployment</strong> di sudut kanan atas.</li>
+                  <ol className="list-decimal list-inside space-y-1.5 leading-relaxed text-slate-700">
+                    <li>Buka Google Sheets Anda &gt; menu <strong>Ekstensi &gt; Apps Script</strong>.</li>
+                    <li>Hapus kode lama, lalu tempel (paste) kode <strong>Code.gs</strong> terbaru di bawah.</li>
+                    <li>Klik <strong>Deploy &gt; New Deployment</strong> (atau <strong>Manage Deployments &gt; Edit &gt; New Version</strong>).</li>
                     <li>Pilih jenis deployment: <strong>Web App</strong>.</li>
                     <li>Atur <i>Execute as</i>: <strong>Me</strong>.</li>
-                    <li>Atur <i>Who has access</i>: <strong>Anyone</strong> (Penting agar web app tidak mengembalikan 404/login error).</li>
-                    <li>Salin URL Web App berakhiran <code>/exec</code> ke kolom input di atas.</li>
+                    <li>Atur <i>Who has access</i>: <strong>Anyone</strong> (Wajib agar tidak memicu HTTP 404/login error).</li>
+                    <li>Salin "Web App URL" berakhiran <code>/exec</code> ke kolom input di atas.</li>
                   </ol>
+
+                  <div className="pt-2 border-t border-amber-200/80 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-amber-950 text-xs">
+                        Kode Apps Script Terbaru (Fix TypeError &amp; Auto Table Creation):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const gasCode = `const TOKEN = "Gakusah";
+
+function doGet(e) {
+  const sheetName = (e && e.parameter && e.parameter.sheet) || "pesanan";
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify([]))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) {
+    return ContentService.createTextOutput(JSON.stringify([]))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const headers = data[0];
+  const rows = data.slice(1)
+    .map((row, i) => {
+      let obj = { rowIndex: i + 2 };
+      headers.forEach((h, idx) => {
+        let val = row[idx];
+        if (val instanceof Date) {
+          val = Utilities.formatDate(val, ss.getSpreadsheetTimeZone(), "yyyy-MM-dd");
+        }
+        obj[h] = val;
+      });
+      return obj;
+    })
+    .filter(r => r.ITEM || r.BARANG || r.NO || r.TANGGAL);
+
+  return ContentService.createTextOutput(JSON.stringify(rows))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      error: "JANGAN menekan tombol 'Run' pada doPost di editor Apps Script! Fungsi ini berjalan otomatis dari aplikasi Web/HP." 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  let body;
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ error: "Invalid JSON format" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (body.token !== TOKEN) {
+    return ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const sheetName = body.sheet || "pesanan";
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    if (sheetName === "pesanan") {
+      sheet.appendRow(["NO", "DAPUR", "ITEM", "DATE", "QTY", "TOKO", "PAYMENT", "DILEVERY", "H. JUAL", "H. BELI"]);
+    } else if (sheetName === "transaksi") {
+      sheet.appendRow(["TANGGAL", "PEMASOK", "BARANG", "TOKO", "QTY", "H. BELI", "TOTAL", "STATUS"]);
+    }
+  }
+
+  const lastCol = sheet.getLastColumn();
+  let headers = [];
+  if (lastCol > 0) {
+    headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  }
+
+  if (body.action === "update") {
+    const colIndex = headers.indexOf(body.column) + 1;
+    if (colIndex > 0 && body.rowIndex) {
+      sheet.getRange(body.rowIndex, colIndex).setValue(body.value);
+
+      if (sheetName === "transaksi" && (body.column === "QTY" || body.column === "H. BELI")) {
+        const qtyCol = headers.indexOf("QTY") + 1;
+        const hbeliCol = headers.indexOf("H. BELI") + 1;
+        const totalCol = headers.indexOf("TOTAL") + 1;
+        if (qtyCol > 0 && hbeliCol > 0 && totalCol > 0) {
+          const qty = Number(sheet.getRange(body.rowIndex, qtyCol).getValue()) || 0;
+          const hbeli = Number(sheet.getRange(body.rowIndex, hbeliCol).getValue()) || 0;
+          sheet.getRange(body.rowIndex, totalCol).setValue(qty * hbeli);
+        }
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (body.action === "add") {
+    const dataObj = body.data || {};
+    if (headers.length === 0) {
+      headers = Object.keys(dataObj);
+      sheet.appendRow(headers);
+    }
+
+    const lastRow = sheet.getLastRow() + 1;
+    const newRow = headers.map(h => {
+      if (h === "NO") {
+        return dataObj["NO"] || (lastRow - 1);
+      }
+      if (h === "TOTAL" && sheetName === "transaksi") {
+        const qty = Number(dataObj["QTY"]) || 0;
+        const hbeli = Number(dataObj["H. BELI"]) || 0;
+        return dataObj["TOTAL"] !== undefined ? dataObj["TOTAL"] : (qty * hbeli);
+      }
+      const val = dataObj[h];
+      return (val !== undefined && val !== null) ? val : "";
+    });
+
+    sheet.appendRow(newRow);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, rowIndex: lastRow }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (body.action === "delete") {
+    if (body.rowIndex && body.rowIndex >= 2) {
+      sheet.deleteRow(body.rowIndex);
+      return ContentService.createTextOutput(JSON.stringify({ success: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ error: "unknown action" }))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+                          navigator.clipboard.writeText(gasCode);
+                          setCopiedGasCode(true);
+                          setTimeout(() => setCopiedGasCode(false), 3000);
+                        }}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold rounded-xl text-[11px] transition-all shadow-sm flex items-center gap-1 cursor-pointer flex-shrink-0"
+                      >
+                        {copiedGasCode ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Tersalin!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Salin Kode Code.gs Terbaru</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowGasCodeText(!showGasCodeText)}
+                      className="text-[10px] text-amber-800 hover:underline font-bold"
+                    >
+                      {showGasCodeText ? 'Sembunyikan Pratinjau Kode' : 'Lihat Pratinjau Kode Code.gs'}
+                    </button>
+
+                    {showGasCodeText && (
+                      <pre className="p-3 bg-slate-900 text-amber-200 rounded-xl text-[9.5px] font-mono overflow-x-auto max-h-48 border border-slate-800">
+{`const TOKEN = "Gakusah"; // Ubah jika perlu
+
+function doGet(e) { ... }
+function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return responseJSON({ status: "error", error: "JANGAN menekan Run di Apps Script IDE!" });
+  }
+  // ... aman dari TypeError: Cannot read properties of undefined (reading 'postData')
+}`}
+                      </pre>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

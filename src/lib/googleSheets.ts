@@ -105,7 +105,7 @@ export async function addRow(
       };
     }
   } catch (err: any) {
-    console.error(`[GoogleSheets API] Error addRow ke sheet ${sheet}:`, err);
+    console.warn(`[GoogleSheets API] Warning addRow ke sheet ${sheet}:`, err);
     return {
       success: false,
       error: err?.message || 'Gagal terhubung ke Google Apps Script backend.',
@@ -269,7 +269,7 @@ export async function fetchSheetData<T = any>(
 
     return { data: rows as T[], error: null };
   } catch (err: any) {
-    console.error(`[GoogleSheets API] Error fetchSheetData (${sheet}):`, err);
+    console.warn(`[GoogleSheets API] Info fetchSheetData (${sheet}):`, err?.message || err);
     return { data: [], error: err?.message || 'Gagal mengambil data dari Google Sheets' };
   }
 }

@@ -82,7 +82,7 @@ export default function App() {
         showToast('Data berhasil disinkronkan dari Google Sheets', 'success');
       }
     } catch (err: any) {
-      console.error('Gagal mengambil data spreadsheet:', err);
+      console.warn('Gagal mengambil data spreadsheet (menggunakan mode data lokal HP):', err);
       setGasError(err?.message || 'Gagal koneksi ke Google Sheets');
     } finally {
       setIsSyncingGas(false);
