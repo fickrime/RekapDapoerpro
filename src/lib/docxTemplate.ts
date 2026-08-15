@@ -381,6 +381,12 @@ export async function exportInvoicePdf(
     console.warn('[Client PDF Export] Browser image compression warning:', compressErr);
   }
 
+  // Check user preference for PDF rendering engine
+  const renderEnginePref = typeof window !== 'undefined' ? localStorage.getItem('pdf_render_engine') : 'auto';
+  if (renderEnginePref === 'client') {
+    return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
+  }
+
   const finalArrayBufferDocx = await finalDocxBlob.arrayBuffer();
   const finalSizeBytes = finalArrayBufferDocx.byteLength;
   const finalSizeMB = (finalSizeBytes / (1024 * 1024)).toFixed(2);
@@ -389,9 +395,8 @@ export async function exportInvoicePdf(
 
   // Hard check against Vercel payload limit (4.5 MB)
   if (finalSizeBytes > 4.2 * 1024 * 1024) {
-    throw new Error(
-      `Ukuran file template DOCX setelah kompresi (${finalSizeMB} MB) masih di atas limit Vercel (4.20 MB). Harap kecilkan logo pada template Google Docs.`
-    );
+    console.warn(`Ukuran file (${finalSizeMB} MB) besar, beralih ke rendering PDF lokal di browser...`);
+    return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
   }
 
   let convertResponse: Response | null = null;
@@ -409,7 +414,10 @@ export async function exportInvoicePdf(
       }
 
       const pdfFileName = `${baseFileName}.pdf`;
-      const convertApiUrl = `/api/convert-to-pdf?fileName=${encodeURIComponent(pdfFileName)}`;
+      const customKey = typeof window !== 'undefined' ? (localStorage.getItem('cloudconvert_custom_api_key') || '') : '';
+      const queryParams = new URLSearchParams({ fileName: pdfFileName });
+      if (customKey.trim()) queryParams.set('apiKey', customKey.trim());
+      const convertApiUrl = `/api/convert-to-pdf?${queryParams.toString()}`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for mobile networks
@@ -486,6 +494,58 @@ export async function exportInvoicePdf(
     pdfUrl,
     fileName,
   };
+}
+
+/**
+ * Download filled DOCX file directly without PDF conversion
+ */
+export async function exportInvoiceDocxOnly(
+  options: ExportInvoiceOptions,
+  onProgress?: (statusMsg: string) => void
+): Promise<{ docxBlob: Blob; fileName: string }> {
+  const { storeName, kitchenName } = options;
+  onProgress?.('Menyiapkan data invoice...');
+  const { validItems, dataContext, rawDate } = prepareScopedInvoiceData(options);
+  if (validItems.length === 0) {
+    throw new Error('Tidak ada transaksi valid untuk di-export');
+  }
+  onProgress?.('Mengambil template invoice...');
+  const arrayBuffer = await fetchDocxTemplateBuffer(storeName);
+  onProgress?.('Mengisi template invoice...');
+  const zip = new PizZip(arrayBuffer);
+  sanitizeDocxXml(zip);
+  let docxBlob: Blob;
+  try {
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      delimiters: { start: '{{', end: '}}' },
+      nullGetter: () => '',
+    });
+    doc.render(dataContext);
+    docxBlob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+  } catch (errDouble: any) {
+    const zip2 = new PizZip(arrayBuffer);
+    sanitizeDocxXml(zip2);
+    const doc2 = new Docxtemplater(zip2, {
+      paragraphLoop: true,
+      linebreaks: true,
+      nullGetter: () => '',
+    });
+    doc2.render(dataContext);
+    docxBlob = doc2.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+  }
+
+  const fileName = `Invoice_${storeName.replace(/\s+/g, '_')}_${kitchenName.replace(/\s+/g, '_')}_${rawDate}.docx`;
+  saveAs(docxBlob, fileName);
+  onProgress?.('File DOCX Berhasil Diunduh!');
+  return { docxBlob, fileName };
 }
 
 /**

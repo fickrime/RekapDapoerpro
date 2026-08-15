@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Receipt, FileText, User, MapPin, Phone, CreditCard, Loader2, Download, CheckCircle2 } from 'lucide-react';
+import { X, Printer, Receipt, FileText, User, MapPin, Phone, CreditCard, Loader2, Download, CheckCircle2, FileDown } from 'lucide-react';
 import { OrderItem } from '../types';
 import { formatRupiah, formatTanggalRealtime, parseIndonesianNumber } from '../lib/formatters';
-import { exportInvoicePdf } from '../lib/docxTemplate';
+import { exportInvoicePdf, exportInvoiceDocxOnly } from '../lib/docxTemplate';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface InvoiceModalProps {
@@ -177,6 +177,37 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     }
   };
 
+  const handleDownloadDocx = async () => {
+    setIsExportingDocx(true);
+    setExportStatusMsg('Menyiapkan file Word (.docx)...');
+    try {
+      if (onSaveInvoiceRecord) {
+        onSaveInvoiceRecord();
+      }
+      await exportInvoiceDocxOnly(
+        {
+          storeName: mainStore,
+          kitchenName: mainKitchen,
+          items: displayItems,
+          invoiceNumber,
+          bayar,
+          customNama: recipientName || mainKitchen,
+          customAlamat: recipientAddress || 'Banyuwangi',
+          customNomor: recipientPhone || invoiceNumber,
+        },
+        (statusText) => {
+          setExportStatusMsg(statusText);
+        }
+      );
+    } catch (err: any) {
+      console.error('Download DOCX Error:', err);
+      alert(`Gagal Mengunduh File DOCX:\n${err?.message || err}`);
+    } finally {
+      setIsExportingDocx(false);
+      setExportStatusMsg('');
+    }
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/70 backdrop-blur-xs font-sans">
@@ -187,7 +218,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-slate-300"
         >
           {/* Modal Top Control Bar */}
-          <div className="px-6 py-3.5 bg-slate-900 text-white flex items-center justify-between gap-3 border-b border-slate-800">
+          <div className="px-4 sm:px-6 py-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-amber-400/20 text-amber-400">
                 <Receipt className="w-5 h-5" />
@@ -202,8 +233,18 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
             </div>
 
-            {/* Action Buttons: "Export PDF" & Close */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            {/* Action Buttons: "Unduh DOCX", "Export PDF" & Close */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <button
+                onClick={handleDownloadDocx}
+                disabled={isExportingDocx}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-75 disabled:cursor-not-allowed text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-all active:scale-95 cursor-pointer"
+                title="Unduh File Word (.docx)"
+              >
+                <FileDown className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                <span className="hidden xs:inline">Unduh</span> DOCX
+              </button>
+
               <button
                 onClick={handleExport}
                 disabled={isExportingDocx}
