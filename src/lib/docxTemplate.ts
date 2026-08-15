@@ -310,7 +310,8 @@ export async function fetchDocxTemplateBuffer(storeName: string): Promise<ArrayB
  */
 export async function exportInvoicePdf(
   options: ExportInvoiceOptions,
-  onProgress?: (statusMsg: string) => void
+  onProgress?: (statusMsg: string) => void,
+  forceEngine?: 'client' | 'cloudconvert' | 'auto'
 ): Promise<{ pdfBlob: Blob; pdfUrl: string; fileName: string }> {
   const { storeName, kitchenName } = options;
 
@@ -382,8 +383,8 @@ export async function exportInvoicePdf(
   }
 
   // Check user preference for PDF rendering engine
-  const renderEnginePref = typeof window !== 'undefined' ? localStorage.getItem('pdf_render_engine') : 'auto';
-  if (renderEnginePref === 'client') {
+  const chosenEngine = forceEngine || (typeof window !== 'undefined' ? (localStorage.getItem('pdf_render_engine') || 'client') : 'client');
+  if (chosenEngine === 'client') {
     return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
   }
 

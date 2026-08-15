@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Receipt, FileText, User, MapPin, Phone, CreditCard, Loader2, Download, CheckCircle2, FileDown } from 'lucide-react';
+import { X, Printer, Receipt, FileText, User, MapPin, Phone, CreditCard, Loader2, Download, CheckCircle2, FileDown, Zap, Cloud, Sparkles } from 'lucide-react';
 import { OrderItem } from '../types';
 import { formatRupiah, formatTanggalRealtime, parseIndonesianNumber } from '../lib/formatters';
 import { exportInvoicePdf, exportInvoiceDocxOnly } from '../lib/docxTemplate';
@@ -36,12 +36,24 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [isExportingDocx, setIsExportingDocx] = useState(false);
   const [exportStatusMsg, setExportStatusMsg] = useState('');
   const [pdfResult, setPdfResult] = useState<{ url: string; fileName: string } | null>(null);
+  const [pdfEngine, setPdfEngine] = useState<'client' | 'auto'>(() => {
+    return (typeof window !== 'undefined' && (localStorage.getItem('pdf_render_engine') as 'client' | 'auto')) || 'client';
+  });
+
+  const handleSelectEngine = (engine: 'client' | 'auto') => {
+    setPdfEngine(engine);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pdf_render_engine', engine);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
       setBayar(bayarAmount);
       setExportStatusMsg('');
       setPdfResult(null);
+      const savedEngine = (typeof window !== 'undefined' && (localStorage.getItem('pdf_render_engine') as 'client' | 'auto')) || 'client';
+      setPdfEngine(savedEngine);
     }
   }, [isOpen, bayarAmount]);
 
@@ -142,7 +154,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         },
         (statusText) => {
           setExportStatusMsg(statusText);
-        }
+        },
+        pdfEngine
       );
 
       if (res && res.pdfUrl) {
@@ -311,6 +324,67 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </a>
               </div>
             )}
+            {/* PDF Engine Selector Bar */}
+            <div className="bg-gradient-to-r from-slate-100 to-indigo-50/50 border border-slate-200 p-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-slate-800">
+                      Mesin Cetak PDF:
+                    </span>
+                    {pdfEngine === 'client' ? (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black flex items-center gap-1 border border-emerald-300/60">
+                        <Zap className="w-3 h-3 text-emerald-600 fill-emerald-600" />
+                        Browser Offline (UNLIMITED • No Limit)
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 text-[10px] font-black flex items-center gap-1 border border-sky-300/60">
+                        <Cloud className="w-3 h-3 text-sky-600" />
+                        CloudConvert Server
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10.5px] text-slate-500 mt-0.5">
+                    {pdfEngine === 'client'
+                      ? '⚡ Konversi langsung di HP/laptop tanpa batas kuota harian & tanpa server.'
+                      : '☁️ Konversi via CloudConvert API server.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200/80 shadow-2xs self-stretch sm:self-auto gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleSelectEngine('client')}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    pdfEngine === 'client'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                  title="Cetak langsung di browser tanpa limit kuota"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Browser (No Limit)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectEngine('auto')}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    pdfEngine === 'auto'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                  title="Konversi via CloudConvert"
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>CloudConvert</span>
+                </button>
+              </div>
+            </div>
+
             {/* Store & Recipient Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Card 1: Data Toko & Invoice */}

@@ -23,7 +23,9 @@ import {
   FileCheck,
   Folder,
   ExternalLink,
-  Receipt
+  Receipt,
+  Sparkles,
+  Zap
 } from 'lucide-react';
 import { Kitchen, Store as StoreType, OrderItem } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -758,6 +760,126 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* SUB-TAB 4: CUSTOM TEMPLATE DOCX / PDF */}
             {activeTab === 'template' && (
               <div className="space-y-5 text-xs text-slate-700 font-sans">
+                {/* PDF Generation Engine & CloudConvert API Settings */}
+                <form onSubmit={handleSavePdfSettings} className="bg-gradient-to-br from-indigo-50/80 via-white to-slate-50 p-4.5 rounded-2xl border-2 border-indigo-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-indigo-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-wider block">
+                          Pilihan Mesin Cetak PDF (Unlimited / Offline)
+                        </span>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          Pilih mesin pemroses file Word .DOCX menjadi PDF
+                        </p>
+                      </div>
+                    </div>
+                    {pdfSettingSaved && (
+                      <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black rounded-xl flex items-center gap-1.5 border border-emerald-300">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        Tersimpan!
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-black text-slate-800 mb-2">
+                        Pilih Mode Mesin Konversi PDF:
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <label
+                          className={`p-3.5 rounded-xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+                            pdfRenderEngine === 'client'
+                              ? 'bg-emerald-50/80 border-emerald-500 shadow-sm'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="pdfRenderEngine"
+                            value="client"
+                            checked={pdfRenderEngine === 'client'}
+                            onChange={(e) => setPdfRenderEngine(e.target.value)}
+                            className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <div>
+                            <span className="font-extrabold text-xs text-emerald-950 flex items-center gap-1.5">
+                              <span>⚡ Cetak di Browser (Offline)</span>
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900 text-[9px] font-black uppercase">
+                                No Limit
+                              </span>
+                            </span>
+                            <span className="text-[10.5px] text-emerald-800 block mt-1 leading-snug">
+                              100% diproses di perangkat lokal tanpa batas harian, tanpa kuota &amp; tanpa butuh API key server.
+                            </span>
+                          </div>
+                        </label>
+
+                        <label
+                          className={`p-3.5 rounded-xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+                            pdfRenderEngine === 'auto'
+                              ? 'bg-indigo-50/80 border-indigo-500 shadow-sm'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="pdfRenderEngine"
+                            value="auto"
+                            checked={pdfRenderEngine === 'auto'}
+                            onChange={(e) => setPdfRenderEngine(e.target.value)}
+                            className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <div>
+                            <span className="font-extrabold text-xs text-slate-900 block">
+                              ☁️ CloudConvert (Server)
+                            </span>
+                            <span className="text-[10.5px] text-slate-500 block mt-1 leading-snug">
+                              Konversi lewat server CloudConvert. Jika server offline atau error 500, otomatis fallback ke browser.
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                      <label className="block text-[11px] font-bold text-slate-700">
+                        CloudConvert API Key Pribadi (Opsional, jika ingin kuota server sendiri):
+                      </label>
+                      <input
+                        type="text"
+                        value={cloudConvertApiKey}
+                        onChange={(e) => setCloudConvertApiKey(e.target.value)}
+                        placeholder="Contoh: eyJ0eXAiOiJKV1QiLCJhbGciOiJ..."
+                        className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        Dapatkan API Key gratis di{' '}
+                        <a
+                          href="https://cloudconvert.com/dashboard/api/v1/keys"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 underline font-bold"
+                        >
+                          cloudconvert.com
+                        </a>{' '}
+                        (pastikan mencentang semua scopes seperti <code>task.read</code>, <code>task.write</code>, <code>task.create</code>).
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Simpan Pengaturan PDF</span>
+                    </button>
+                  </div>
+                </form>
+
                 {/* Supabase Bucket Path Target Info Card */}
                 <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-3 shadow-md">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -937,117 +1059,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   )}
                 </div>
-
-                {/* PDF Generation Engine & CloudConvert API Settings */}
-                <form onSubmit={handleSavePdfSettings} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <div>
-                      <span className="font-black text-slate-900 text-[11px] uppercase tracking-wider block">
-                        Pengaturan Cetak PDF &amp; CloudConvert
-                      </span>
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        Pilih mesin konversi dokumen DOCX ke PDF yang diinginkan
-                      </p>
-                    </div>
-                    {pdfSettingSaved && (
-                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-lg flex items-center gap-1">
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        Tersimpan!
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
-                        Mode Mesin Konversi PDF:
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label
-                          className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
-                            pdfRenderEngine === 'auto'
-                              ? 'bg-indigo-50/70 border-indigo-500 shadow-xs'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="pdfRenderEngine"
-                            value="auto"
-                            checked={pdfRenderEngine === 'auto'}
-                            onChange={(e) => setPdfRenderEngine(e.target.value)}
-                            className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <div>
-                            <span className="font-extrabold text-xs text-slate-900 block">
-                              Otomatis (CloudConvert + Fallback)
-                            </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5 leading-tight">
-                              Konversi via CloudConvert API. Jika offline/error 500, otomatis beralih ke PDF Browser.
-                            </span>
-                          </div>
-                        </label>
-
-                        <label
-                          className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
-                            pdfRenderEngine === 'client'
-                              ? 'bg-indigo-50/70 border-indigo-500 shadow-xs'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="pdfRenderEngine"
-                            value="client"
-                            checked={pdfRenderEngine === 'client'}
-                            onChange={(e) => setPdfRenderEngine(e.target.value)}
-                            className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <div>
-                            <span className="font-extrabold text-xs text-slate-900 block">
-                              Cetak Langsung di Browser (Offline)
-                            </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5 leading-tight">
-                              100% diproses di perangkat lokal tanpa server, tanpa kuota &amp; tanpa API Key.
-                            </span>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        CloudConvert API Key Pribadi (Opsional):
-                      </label>
-                      <input
-                        type="text"
-                        value={cloudConvertApiKey}
-                        onChange={(e) => setCloudConvertApiKey(e.target.value)}
-                        placeholder="Contoh: eyJ0eXAiOiJKV1QiLCJhbGciOiJ..."
-                        className="w-full text-xs font-mono p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Dapatkan API Key gratis di{' '}
-                        <a
-                          href="https://cloudconvert.com/dashboard/api/v1/keys"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-indigo-600 underline font-bold"
-                        >
-                          cloudconvert.com
-                        </a>{' '}
-                        (pastikan mencentang semua scopes seperti <code>task.read</code>, <code>task.write</code>, <code>task.create</code>).
-                      </p>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer"
-                    >
-                      Simpan Pengaturan PDF
-                    </button>
-                  </div>
-                </form>
 
                 {/* Template Field / Placeholder Reference Guide */}
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
