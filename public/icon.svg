@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg-grad)"/>
+  <!-- Receipt / Document Container -->
+  <g transform="translate(106, 86)">
+    <!-- Main Card Body -->
+    <rect x="0" y="0" width="300" height="340" rx="32" fill="#ffffff" opacity="0.96" filter="drop-shadow(0px 16px 24px rgba(0,0,0,0.25))"/>
+    <!-- Header band -->
+    <path d="M 0 32 C 0 14.327 14.327 0 32 0 L 268 0 C 285.673 0 300 14.327 300 32 L 300 70 L 0 70 Z" fill="url(#accent-grad)"/>
+    <!-- Header icon circle -->
+    <circle cx="150" cy="70" r="36" fill="#ffffff" stroke="#4f46e5" stroke-width="6"/>
+    <!-- Chef / Kitchen Pot / Utensil Symbol inside badge -->
+    <path d="M 136 74 L 164 74 M 138 64 Q 150 54 162 64 M 150 54 L 150 50" stroke="#4f46e5" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <!-- Invoice text lines -->
+    <rect x="40" y="130" width="140" height="16" rx="8" fill="#e2e8f0"/>
+    <rect x="200" y="130" width="60" height="16" rx="8" fill="#818cf8"/>
+    
+    <rect x="40" y="165" width="160" height="12" rx="6" fill="#cbd5e1"/>
+    <rect x="220" y="165" width="40" height="12" rx="6" fill="#94a3b8"/>
+    
+    <rect x="40" y="195" width="120" height="12" rx="6" fill="#cbd5e1"/>
+    <rect x="210" y="195" width="50" height="12" rx="6" fill="#94a3b8"/>
+
+    <line x1="40" y1="230" x2="260" y2="230" stroke="#e2e8f0" stroke-width="3" stroke-dasharray="6,6"/>
+
+    <!-- Total Bar -->
+    <rect x="40" y="255" width="90" height="20" rx="6" fill="#4f46e5"/>
+    <rect x="170" y="255" width="90" height="20" rx="6" fill="#10b981"/>
+  </g>
+</svg>
