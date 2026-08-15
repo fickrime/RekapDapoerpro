@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, UtensilsCrossed, ShieldCheck } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Receipt, Sparkles, UtensilsCrossed, ShieldCheck } from 'lucide-react';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -10,27 +10,25 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const [statusText, setStatusText] = useState('Menyiapkan Rekap Dapur Pro...');
   const [progress, setProgress] = useState(15);
 
-  const logoUrl = "https://vkrgybebgnnaxzzcfjpn.supabase.co/storage/v1/object/public/LOGO/Rekap%20Dapur%20pro.png";
-
   useEffect(() => {
     const timer1 = setTimeout(() => {
       setProgress(55);
       setStatusText('Memuat Master Data Dapur & Toko...');
-    }, 500);
+    }, 400);
 
     const timer2 = setTimeout(() => {
       setProgress(90);
       setStatusText('Menyingkronkan Data Pesanan...');
-    }, 1100);
+    }, 900);
 
     const timer3 = setTimeout(() => {
       setProgress(100);
       setStatusText('Sistem Siap!');
-    }, 1600);
+    }, 1300);
 
     const timer4 = setTimeout(() => {
       onFinish();
-    }, 1900);
+    }, 1600);
 
     return () => {
       clearTimeout(timer1);
@@ -44,7 +42,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     <motion.div
       initial={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 1.05 }}
-      transition={{ duration: 0.5, ease: 'easeInOut' }}
+      transition={{ duration: 0.4, ease: 'easeInOut' }}
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white font-sans overflow-hidden px-4 select-none"
     >
       {/* Background Glow Blobs */}
@@ -66,14 +64,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
             initial={{ scale: 0.5, rotate: -15 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-            className="relative bg-slate-900/90 p-4 rounded-3xl border border-white/20 shadow-2xl backdrop-blur-xl flex items-center justify-center"
+            className="relative bg-slate-900/90 p-5 rounded-3xl border border-white/20 shadow-2xl backdrop-blur-xl flex items-center justify-center text-indigo-400"
           >
-            <img
-              src={logoUrl}
-              alt="Rekap Dapur Pro"
-              className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-xl"
-              referrerPolicy="no-referrer"
-            />
+            <Receipt className="w-14 h-14" />
           </motion.div>
         </div>
 
@@ -88,7 +81,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
             <span>Rekap Dapur Pro</span>
           </h1>
           <p className="text-xs text-slate-400 font-medium">
-            Sistem Ringkasan Pesanan Supplier & Dapur Harian
+            Sistem Ringkasan Pesanan Supplier &amp; Dapur Harian
           </p>
         </motion.div>
 
@@ -99,29 +92,17 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
               className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 rounded-full"
               initial={{ width: '0%' }}
               animate={{ width: `${progress}%` }}
-              transition={{ ease: 'easeOut', duration: 0.4 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
             />
           </div>
-
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 px-1">
-            <span className="flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-indigo-400 animate-spin" />
-              {statusText}
+          <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium px-1">
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-amber-400 animate-spin" />
+              <span>{statusText}</span>
             </span>
-            <span className="font-mono text-indigo-300">{progress}%</span>
+            <span className="font-mono text-indigo-300 font-bold">{progress}%</span>
           </div>
         </div>
-
-        {/* Footer info */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="mt-12 flex items-center gap-1.5 text-[10px] text-slate-500 font-medium"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Aman & Tersinkronisasi Cloud Supabase</span>
-        </motion.div>
       </div>
     </motion.div>
   );

@@ -76,9 +76,10 @@ export function formatTanggalDisatuin(dateStr: string): string {
   }
 }
 
-export function formatTanggalRealtime(): string {
-  const now = new Date();
-  return now.toLocaleDateString('id-ID', {
+export function formatTanggalRealtime(customDate?: string | Date): string {
+  const dateObj = customDate ? (typeof customDate === 'string' ? new Date(customDate) : customDate) : new Date();
+  const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+  return validDate.toLocaleDateString('id-ID', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

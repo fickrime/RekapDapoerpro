@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { 
   OrderItem, 
@@ -8,7 +7,8 @@ import {
   InvoiceRecord, 
   TextParseResult,
   PaymentStatus,
-  DeliveryStatus
+  DeliveryStatus,
+  ExportHistoryItem
 } from './types';
 import { 
   INITIAL_KITCHENS, 
@@ -27,10 +27,20 @@ import { TextImportModal } from './components/TextImportModal';
 import { ExportModal } from './components/ExportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { ExportHistorySheet } from './components/ExportHistorySheet';
+import { SyncBottomSheet } from './components/SyncBottomSheet';
 import { Toast, ToastMessage, ToastType } from './components/Toast';
 import { SplashScreen } from './components/SplashScreen';
-import { generateInvoiceNumber } from './lib/formatters';
-import { addRow, fetchSheetData, mapRawOrder, mapRawInvoice, buildPesananPayload, buildTransaksiPayload } from './lib/googleSheets';
+import { generateInvoiceNumber, parseIndonesianNumber } from './lib/formatters';
+import { 
+  addRow, 
+  fetchSheetData, 
+  mapRawOrder, 
+  mapRawInvoice, 
+  buildPesananPayload, 
+  buildTransaksiPayload 
+} from './lib/googleSheets';
+import { exportInvoicePdf, downloadDocxInvoice } from './lib/docxTemplate';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -43,12 +53,25 @@ export default function App() {
   const [stores, setStores] = useLocalStorage<StoreType[]>('dapur_tracker_stores_v4', INITIAL_STORES);
   const [pemasokList, setPemasokList] = useLocalStorage<string[]>('dapur_tracker_pemasok_v4', INITIAL_PEMASOK);
   const [invoices, setInvoices] = useLocalStorage<InvoiceRecord[]>('dapur_tracker_invoices_v4', []);
+  const [exportHistory, setExportHistory] = useLocalStorage<ExportHistoryItem[]>('dapur_export_history_v1', []);
 
   // Google Sheets Sync State
   const [isSyncingGas, setIsSyncingGas] = useState(false);
   const [gasError, setGasError] = useState<string | null>(null);
 
-  // Fetch sheet data on mount
+  // Export background tracking state
+  const [isExportingActive, setIsExportingActive] = useState(false);
+  const [isExportHistoryOpen, setIsExportHistoryOpen] = useState(false);
+  const [isSyncSheetOpen, setIsSyncSheetOpen] = useState(false);
+
+  // Toast Notification State
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ id: `toast-${Date.now()}`, message, type });
+  };
+
+  // Fetch sheet data
   const loadSpreadsheetData = async (showToastNotice = false) => {
     setIsSyncingGas(true);
     setGasError(null);
@@ -60,7 +83,7 @@ export default function App() {
 
       if (pesananRes.error || transaksiRes.error) {
         const errText = pesananRes.error || transaksiRes.error || 'Gagal koneksi ke Google Sheets';
-        console.warn('[GoogleSheets Sync] Skipped local data overwrite due to fetch error:', errText);
+        console.warn('[GoogleSheets Sync] Skipped local data overwrite:', errText);
         setGasError(errText);
         if (showToastNotice) {
           showToast(`Sinkronisasi Google Sheets Gagal: ${errText}`, 'error');
@@ -92,14 +115,6 @@ export default function App() {
   React.useEffect(() => {
     loadSpreadsheetData();
   }, []);
-
-
-  // Toast Notification State
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ id: `toast-${Date.now()}`, message, type });
-  };
 
   // Confirm Modal State
   const [confirmState, setConfirmState] = useState<{
@@ -205,7 +220,7 @@ export default function App() {
     );
   };
 
-  const handleUpdateDeliveryStatus = (id: string, deliveryStatus: 'DONE' | 'PENDING') => {
+  const handleUpdateDeliveryStatus = (id: string, deliveryStatus: DeliveryStatus) => {
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== id) return o;
@@ -406,8 +421,8 @@ export default function App() {
   const handleSaveInvoiceRecord = async () => {
     if (invoices.some((inv) => inv.invoiceNumber === invoiceNumber)) return;
 
-    const totalBeli = invoiceItems.reduce((s, i) => s + i.qty * i.hargaBeli, 0);
-    const totalJual = invoiceItems.reduce((s, i) => s + i.qty * i.hargaJual, 0);
+    const totalBeli = invoiceItems.reduce((s, i) => s + i.qty * (i.hargaBeli || 0), 0);
+    const totalJual = invoiceItems.reduce((s, i) => s + i.qty * (i.hargaJual || i.hargaBeli || 0), 0);
     const newRecord: InvoiceRecord = {
       id: `inv-rec-${Date.now()}`,
       invoiceNumber,
@@ -417,8 +432,8 @@ export default function App() {
         year: 'numeric',
       }),
       createdAt: new Date().toISOString(),
-      tujuanDapur: invoiceTargetKitchen || invoiceItems[0]?.tujuanDapur || 'Siliragung',
-      toko: invoiceTargetStore || invoiceItems[0]?.toko || 'Toko 1',
+      tujuanDapur: invoiceTargetKitchen || invoiceItems[0]?.tujuanDapur || 'Dapur',
+      toko: invoiceTargetStore || invoiceItems[0]?.toko || 'HTG',
       items: invoiceItems,
       totalBeli,
       totalJual,
@@ -426,9 +441,7 @@ export default function App() {
     };
 
     setIsSyncingGas(true);
-    // POST payload to sheet "transaksi"
     const txData = buildTransaksiPayload(newRecord);
-
     const res = await addRow('transaksi', txData);
     setIsSyncingGas(false);
 
@@ -440,6 +453,97 @@ export default function App() {
     } else {
       setGasError(res.error || 'Gagal koneksi ke Google Sheets');
       showToast(`Invoice TERSIMPAN DI HP/LOKAL! (Gagal sync Google Sheets: ${res.error || 'Error'})`, 'error');
+    }
+  };
+
+  // Background Export Handler (Requirement #4)
+  const handleTriggerBackgroundExport = async (options: {
+    storeName: string;
+    kitchenName: string;
+    items: OrderItem[];
+    invoiceNumber: string;
+    bayar: number;
+    customNama: string;
+    customAlamat: string;
+    customNomor: string;
+    type: 'pdf' | 'docx';
+  }) => {
+    setIsExportingActive(true);
+
+    const totalAmount = options.items.reduce(
+      (sum, item) => sum + parseIndonesianNumber(item.qty) * parseIndonesianNumber(item.hargaJual || item.hargaBeli || 0),
+      0
+    );
+
+    try {
+      if (options.type === 'pdf') {
+        const res = await exportInvoicePdf({
+          storeName: options.storeName,
+          kitchenName: options.kitchenName,
+          items: options.items,
+          invoiceNumber: options.invoiceNumber,
+          bayar: options.bayar,
+          customNama: options.customNama,
+          customAlamat: options.customAlamat,
+          customNomor: options.customNomor,
+        });
+
+        if (res && res.pdfUrl) {
+          const newHistoryItem: ExportHistoryItem = {
+            id: `exp-${Date.now()}`,
+            invoiceNumber: options.invoiceNumber,
+            toko: options.storeName,
+            tujuanDapur: options.kitchenName,
+            totalAmount,
+            totalJual: totalAmount,
+            itemCount: options.items.length,
+            tanggal: new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+            fileName: res.fileName,
+            fileUrl: res.pdfUrl,
+            pdfUrl: res.pdfUrl,
+            type: 'pdf',
+            fileType: 'pdf',
+          };
+
+          setExportHistory((prev) => [newHistoryItem, ...prev]);
+          showToast(`Invoice ${options.invoiceNumber} berhasil dicetak! Klik ikon Download di atas untuk melihat/unduh.`, 'success');
+        }
+      } else {
+        await downloadDocxInvoice({
+          storeName: options.storeName,
+          kitchenName: options.kitchenName,
+          items: options.items,
+          invoiceNumber: options.invoiceNumber,
+          bayar: options.bayar,
+          customNama: options.customNama,
+          customAlamat: options.customAlamat,
+          customNomor: options.customNomor,
+        });
+
+        const newHistoryItem: ExportHistoryItem = {
+          id: `exp-${Date.now()}`,
+          invoiceNumber: options.invoiceNumber,
+          toko: options.storeName,
+          tujuanDapur: options.kitchenName,
+          totalAmount,
+          totalJual: totalAmount,
+          itemCount: options.items.length,
+          tanggal: new Date().toISOString().split('T')[0],
+          createdAt: new Date().toISOString(),
+          fileName: `Invoice_${options.invoiceNumber}.docx`,
+          type: 'docx',
+          fileType: 'docx',
+        };
+
+        setExportHistory((prev) => [newHistoryItem, ...prev]);
+        showToast(`File Word Invoice ${options.invoiceNumber} siap!`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Background Export Error:', err);
+      showToast(`Gagal export: ${err?.message || err}`, 'error');
+    } finally {
+      setIsExportingActive(false);
     }
   };
 
@@ -459,11 +563,11 @@ export default function App() {
   const handleDeleteAllData = () => {
     setOrders([]);
     setInvoices([]);
+    setExportHistory([]);
     showToast('Seluruh data pesanan berhasil dihapus bersih', 'delete');
   };
 
   // Handlers for WhatsApp Text Import
-
   const handleImportParsedItems = async (parsedResults: TextParseResult[], targetDate: string) => {
     const newOrdersAdded: OrderItem[] = parsedResults.map((res, index) => ({
       id: `ord-imp-${Date.now()}-${index}`,
@@ -472,7 +576,7 @@ export default function App() {
       hargaBeli: res.hargaBeli,
       hargaJual: res.hargaJual,
       toko: res.toko || stores[0]?.nama || 'HTG',
-      tujuanDapur: res.tujuanDapur || kitchens[0]?.nama || 'Siliragung',
+      tujuanDapur: res.tujuanDapur || kitchens[0]?.nama || 'Dapur',
       pemasok: res.pemasok || pemasokList[0] || 'Pemasok 1',
       status: 'pending',
       tanggal: targetDate || selectedDate,
@@ -520,83 +624,62 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#eef2f6] text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-[#4f46e5]">
-      {/* Header Banner */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-500 selection:text-white pb-28">
+      {/* Top Header Banner with Live Stats, Download Icon & Sync Bottom Sheet Trigger */}
       <HeaderBanner
         orders={orders}
         selectedDate={selectedDate}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenTextImport={() => setIsTextImportOpen(true)}
-        onOpenExport={() => setIsExportOpen(true)}
-        onRefreshGas={() => loadSpreadsheetData(true)}
+        onOpenExportHistory={() => setIsExportHistoryOpen(true)}
+        onOpenSyncSheet={() => setIsSyncSheetOpen(true)}
         isSyncingGas={isSyncingGas}
+        isExportingActive={isExportingActive}
+        exportHistoryCount={exportHistory.length}
       />
 
-      {/* Google Sheets Sync Error Alert Banner */}
-      {gasError && (
-        <div className="max-w-5xl w-full mx-auto px-3 my-2 font-sans no-print">
-          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-950 rounded-2xl p-3 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-sm backdrop-blur-md">
-            <div className="flex items-start gap-2 min-w-0">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="leading-snug">
-                <span className="font-extrabold block sm:inline">Koneksi Google Sheets: </span>
-                <span className="font-medium text-amber-900">{gasError}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-[11px] whitespace-nowrap transition-all shadow-sm flex-shrink-0 cursor-pointer self-end sm:self-auto"
-            >
-              Atur URL Web App
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6">
+      {/* Main Content Body */}
+      <main className="flex-1 w-full max-w-5xl mx-auto px-3 sm:px-4 py-2">
         <motion.div
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.08}
+          dragElastic={0.15}
           onDragEnd={handleDragEnd}
-          className="touch-pan-y"
+          className="w-full touch-pan-y"
         >
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' ? (
               <motion.div
-                key="dashboard-view"
-                initial={{ opacity: 0, x: -20 }}
+                key="dashboard"
+                initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                exit={{ opacity: 0, x: 10 }}
                 transition={{ duration: 0.2 }}
               >
                 <DashboardView
                   orders={orders}
+                  kitchens={kitchens}
+                  stores={stores}
+                  pemasokList={pemasokList}
                   selectedDate={selectedDate}
                   onDateChange={setSelectedDate}
                   onToggleStatus={handleToggleStatus}
                   onUpdatePaymentStatus={handleUpdatePaymentStatus}
                   onUpdateDeliveryStatus={handleUpdateDeliveryStatus}
-                  onDuplicateOrder={handleDuplicateOrder}
-                  onToggleBatchStatus={handleToggleBatchStatus}
                   onEditOrder={handleOpenEditOrder}
+                  onDuplicateOrder={handleDuplicateOrder}
                   onDeleteOrder={handleDeleteOrder}
-                  onDeleteKitchenOrders={handleDeleteKitchenOrders}
-                  onOpenAddModal={handleOpenAddModal}
                   onOpenInvoiceModal={handleStartInvoiceFlow}
-                  onExportInvoicePdf={handleStartInvoiceFlow}
-                  kitchens={kitchens}
-                  stores={stores}
+                  onOpenTextImport={() => setIsTextImportOpen(true)}
+                  onOpenExportModal={() => setIsExportOpen(true)}
+                  onOpenAddModal={() => handleOpenAddModal()}
                 />
               </motion.div>
             ) : (
               <motion.div
-                key="transaksi-view"
-                initial={{ opacity: 0, x: 20 }}
+                key="transaksi"
+                initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.2 }}
               >
                 <TransactionsView
@@ -640,7 +723,6 @@ export default function App() {
         />
       )}
 
-      {/* MODALS */}
       {/* 1. Add / Edit Order Modal */}
       <OrderModal
         isOpen={isOrderModalOpen}
@@ -658,7 +740,7 @@ export default function App() {
         selectedDate={selectedDate}
       />
 
-      {/* 2. Invoice Form Modal (Step 1 Confirmation) */}
+      {/* 2. Invoice Form (Step 1 Confirmation Bottom Sheet) */}
       <InvoiceFormModal
         isOpen={isInvoiceFormOpen}
         onClose={() => setIsInvoiceFormOpen(false)}
@@ -669,7 +751,7 @@ export default function App() {
         onConfirm={handleConfirmInvoiceForm}
       />
 
-      {/* 3. Invoice Printable Modal (Step 2 Preview & Export) */}
+      {/* 3. Invoice Preview & Export (Step 2 Bottom Sheet) */}
       <InvoiceModal
         isOpen={isInvoiceModalOpen}
         onClose={() => setIsInvoiceModalOpen(false)}
@@ -681,10 +763,11 @@ export default function App() {
         recipientAddress={invoiceRecipientAddress}
         recipientPhone={invoiceRecipientPhone}
         bayarAmount={invoiceBayar}
+        onTriggerBackgroundExport={handleTriggerBackgroundExport}
         onSaveInvoiceRecord={handleSaveInvoiceRecord}
       />
 
-      {/* 3. Text Import (WhatsApp Parser) Modal */}
+      {/* 4. Text Import (WhatsApp Parser) Modal */}
       <TextImportModal
         isOpen={isTextImportOpen}
         onClose={() => setIsTextImportOpen(false)}
@@ -695,20 +778,49 @@ export default function App() {
         selectedDate={selectedDate}
       />
 
-      {/* 4. Export Modal (.xlsx & .csv) */}
+      {/* 5. Export Spreadsheet (.xlsx & .csv) Bottom Sheet */}
       <ExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         orders={orders}
         selectedDate={selectedDate}
+        onExportSuccess={(fileName) => {
+          showToast(`Laporan ${fileName} berhasil diunduh!`, 'success');
+        }}
       />
 
-      {/* Animated Initial Splash Screen */}
-      <AnimatePresence>
-        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
-      </AnimatePresence>
+      {/* 6. Export History & Download Bottom Sheet */}
+      <ExportHistorySheet
+        isOpen={isExportHistoryOpen}
+        onClose={() => setIsExportHistoryOpen(false)}
+        history={exportHistory}
+        onDeleteHistoryItem={(id) => {
+          setExportHistory((prev) => prev.filter((item) => item.id !== id));
+          showToast('Riwayat item dihapus', 'delete');
+        }}
+        onClearHistory={() => {
+          setExportHistory([]);
+          showToast('Riwayat export berhasil dibersihkan', 'success');
+        }}
+        isExportingActive={isExportingActive}
+      />
 
-      {/* 5. Settings Modal */}
+      {/* 7. Google Sheets Sync Bottom Sheet */}
+      <SyncBottomSheet
+        isOpen={isSyncSheetOpen}
+        onClose={() => setIsSyncSheetOpen(false)}
+        ordersCount={orders.length}
+        invoicesCount={invoices.length}
+        onTriggerSync={() => loadSpreadsheetData(true)}
+        isSyncing={isSyncingGas}
+        syncError={gasError}
+        onOpenSettings={() => {
+          setIsSyncSheetOpen(false);
+          setIsSettingsOpen(true);
+        }}
+      />
+
+      {/* 8. Settings Bottom Sheet */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -722,8 +834,11 @@ export default function App() {
         onUpdateOrders={setOrders}
         onDeleteAllData={handleDeleteAllData}
       />
+
+      {/* Animated Initial Splash Screen */}
+      <AnimatePresence>
+        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+      </AnimatePresence>
     </div>
   );
 }
-
-

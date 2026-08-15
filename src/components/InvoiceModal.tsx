@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Receipt, FileText, User, MapPin, Phone, CreditCard, Loader2, Download, CheckCircle2, FileDown, Zap, Cloud, Sparkles } from 'lucide-react';
+import { 
+  X, 
+  Printer, 
+  Receipt, 
+  FileText, 
+  User, 
+  MapPin, 
+  Phone, 
+  CreditCard, 
+  Download, 
+  Sparkles,
+  FileDown
+} from 'lucide-react';
 import { OrderItem } from '../types';
 import { formatRupiah, formatTanggalRealtime, parseIndonesianNumber } from '../lib/formatters';
-import { exportInvoicePdf, exportInvoiceDocxOnly } from '../lib/docxTemplate';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface InvoiceModalProps {
@@ -16,6 +27,17 @@ interface InvoiceModalProps {
   recipientAddress?: string;
   recipientPhone?: string;
   bayarAmount?: number;
+  onTriggerBackgroundExport?: (options: {
+    storeName: string;
+    kitchenName: string;
+    items: OrderItem[];
+    invoiceNumber: string;
+    bayar: number;
+    customNama: string;
+    customAlamat: string;
+    customNomor: string;
+    type: 'pdf' | 'docx';
+  }) => void;
   onSaveInvoiceRecord?: () => void;
 }
 
@@ -30,30 +52,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   recipientAddress,
   recipientPhone,
   bayarAmount = 0,
+  onTriggerBackgroundExport,
   onSaveInvoiceRecord,
 }) => {
   const [bayar, setBayar] = useState<number>(bayarAmount);
-  const [isExportingDocx, setIsExportingDocx] = useState(false);
-  const [exportStatusMsg, setExportStatusMsg] = useState('');
-  const [pdfResult, setPdfResult] = useState<{ url: string; fileName: string } | null>(null);
-  const [pdfEngine, setPdfEngine] = useState<'client' | 'auto'>(() => {
-    return (typeof window !== 'undefined' && (localStorage.getItem('pdf_render_engine') as 'client' | 'auto')) || 'client';
-  });
-
-  const handleSelectEngine = (engine: 'client' | 'auto') => {
-    setPdfEngine(engine);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pdf_render_engine', engine);
-    }
-  };
 
   useEffect(() => {
     if (isOpen) {
       setBayar(bayarAmount);
-      setExportStatusMsg('');
-      setPdfResult(null);
-      const savedEngine = (typeof window !== 'undefined' && (localStorage.getItem('pdf_render_engine') as 'client' | 'auto')) || 'client';
-      setPdfEngine(savedEngine);
     }
   }, [isOpen, bayarAmount]);
 
@@ -73,439 +79,189 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
   const displayItems = scopedItems.length > 0 ? scopedItems : items;
 
-  const realTimeDate = formatTanggalRealtime();
   const totalJual = displayItems.reduce((sum, item) => {
     const q = parseIndonesianNumber(item.qty);
     const p = parseIndonesianNumber(item.hargaJual || item.hargaBeli || 0);
     return sum + q * p;
   }, 0);
-  const sisa = totalJual - parseIndonesianNumber(bayar);
+  const sisa = Math.max(0, totalJual - parseIndonesianNumber(bayar));
 
-  const mainKitchen = tujuanDapur || displayItems[0]?.tujuanDapur || 'Singojuruh';
+  const mainKitchen = tujuanDapur || displayItems[0]?.tujuanDapur || 'Dapur';
   const mainStore = toko || displayItems[0]?.toko || 'HTG';
 
-  const handleExport = async () => {
-    setPdfResult(null);
-    setIsExportingDocx(true);
-    setExportStatusMsg('Membuka tab PDF...');
-
-    // Step 1: Open blank tab IMMEDIATELY on user click event (user gesture required by mobile browsers)
-    let preOpenedTab: Window | null = null;
-    try {
-      preOpenedTab = window.open('about:blank', '_blank');
-      if (preOpenedTab) {
-        preOpenedTab.document.write(`
-          <!DOCTYPE html>
-          <html lang="id">
-            <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Memproses PDF Invoice...</title>
-              <style>
-                body {
-                  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                  display: flex; flex-direction: column; align-items: center; justify-content: center;
-                  min-height: 100vh; margin: 0; background-color: #0f172a; color: #f8fafc;
-                  padding: 24px; text-align: center; box-sizing: border-box;
-                }
-                .card {
-                  background: #1e293b; padding: 32px 24px; border-radius: 20px;
-                  border: 1px solid #334155; max-width: 420px; width: 100%;
-                  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-                }
-                .spinner {
-                  width: 44px; height: 44px; border: 4px solid #fbbf24;
-                  border-top-color: transparent; border-radius: 50%;
-                  animation: spin 0.8s linear infinite; margin: 0 auto 20px auto;
-                }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                h2 { font-size: 18px; font-weight: 800; color: #fbbf24; margin: 0 0 10px 0; }
-                p { font-size: 13px; color: #94a3b8; margin: 0; line-height: 1.5; }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <div class="spinner"></div>
-                <h2>Sedang Memproses PDF Invoice...</h2>
-                <p>Mohon tunggu sebentar, file PDF sedang disiapkan. Halaman ini akan otomatis menampilkan file PDF setelah selesai.</p>
-              </div>
-            </body>
-          </html>
-        `);
-      }
-    } catch (tabErr) {
-      console.warn('[Mobile Export] Pre-opening tab failed or blocked:', tabErr);
+  const handleStartPdfExport = () => {
+    if (onSaveInvoiceRecord) {
+      onSaveInvoiceRecord();
     }
-
-    try {
-      if (onSaveInvoiceRecord) {
-        onSaveInvoiceRecord();
-      }
-
-      const res = await exportInvoicePdf(
-        {
-          storeName: mainStore,
-          kitchenName: mainKitchen,
-          items: displayItems,
-          invoiceNumber,
-          bayar,
-          customNama: recipientName || mainKitchen,
-          customAlamat: recipientAddress || 'Banyuwangi',
-          customNomor: recipientPhone || invoiceNumber,
-        },
-        (statusText) => {
-          setExportStatusMsg(statusText);
-        },
-        pdfEngine
-      );
-
-      if (res && res.pdfUrl) {
-        setPdfResult({ url: res.pdfUrl, fileName: res.fileName });
-
-        // Step 3: Redirect the pre-opened tab to the generated Blob URL
-        if (preOpenedTab && !preOpenedTab.closed) {
-          preOpenedTab.location.href = res.pdfUrl;
-        }
-      }
-    } catch (err: any) {
-      console.error('Export Invoice Error:', err);
-      if (preOpenedTab && !preOpenedTab.closed) {
-        try {
-          preOpenedTab.document.body.innerHTML = `
-            <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #0f172a; color: #f8fafc; padding: 20px; text-align: center;">
-              <div style="background: #1e293b; border: 1px solid #ef4444; padding: 24px; border-radius: 16px; max-width: 400px;">
-                <h2 style="color: #f87171; margin-top: 0;">Gagal Mengonversi PDF</h2>
-                <p style="color: #cbd5e1; font-size: 14px;">${err?.message || err}</p>
-                <button onclick="window.close()" style="background: #ef4444; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 12px;">Tutup Halaman</button>
-              </div>
-            </div>
-          `;
-        } catch (_) {
-          preOpenedTab.close();
-        }
-      }
-      alert(`Gagal Export Invoice PDF:\n${err?.message || err}`);
-    } finally {
-      setIsExportingDocx(false);
-      setExportStatusMsg('');
+    if (onTriggerBackgroundExport) {
+      onTriggerBackgroundExport({
+        storeName: mainStore,
+        kitchenName: mainKitchen,
+        items: displayItems,
+        invoiceNumber,
+        bayar,
+        customNama: recipientName || mainKitchen,
+        customAlamat: recipientAddress || 'Banyuwangi',
+        customNomor: recipientPhone || invoiceNumber,
+        type: 'pdf',
+      });
     }
+    onClose();
   };
 
-  const handleDownloadDocx = async () => {
-    setIsExportingDocx(true);
-    setExportStatusMsg('Menyiapkan file Word (.docx)...');
-    try {
-      if (onSaveInvoiceRecord) {
-        onSaveInvoiceRecord();
-      }
-      await exportInvoiceDocxOnly(
-        {
-          storeName: mainStore,
-          kitchenName: mainKitchen,
-          items: displayItems,
-          invoiceNumber,
-          bayar,
-          customNama: recipientName || mainKitchen,
-          customAlamat: recipientAddress || 'Banyuwangi',
-          customNomor: recipientPhone || invoiceNumber,
-        },
-        (statusText) => {
-          setExportStatusMsg(statusText);
-        }
-      );
-    } catch (err: any) {
-      console.error('Download DOCX Error:', err);
-      alert(`Gagal Mengunduh File DOCX:\n${err?.message || err}`);
-    } finally {
-      setIsExportingDocx(false);
-      setExportStatusMsg('');
+  const handleStartDocxExport = () => {
+    if (onSaveInvoiceRecord) {
+      onSaveInvoiceRecord();
     }
+    if (onTriggerBackgroundExport) {
+      onTriggerBackgroundExport({
+        storeName: mainStore,
+        kitchenName: mainKitchen,
+        items: displayItems,
+        invoiceNumber,
+        bayar,
+        customNama: recipientName || mainKitchen,
+        customAlamat: recipientAddress || 'Banyuwangi',
+        customNomor: recipientPhone || invoiceNumber,
+        type: 'docx',
+      });
+    }
+    onClose();
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/70 backdrop-blur-xs font-sans">
+      <div className="fixed inset-0 z-50 flex items-end justify-center no-print font-sans">
+        {/* Backdrop */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-slate-300"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+        />
+
+        {/* Bottom Sheet Modal */}
+        <motion.div
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+          className="relative w-full max-w-2xl bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[88vh] z-10 border-t border-slate-200/80 overflow-hidden"
         >
-          {/* Modal Top Control Bar */}
-          <div className="px-4 sm:px-6 py-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
+          {/* Mobile Drag Indicator */}
+          <div className="pt-3 pb-1 flex justify-center">
+            <div className="w-12 h-1.5 bg-slate-300 rounded-full" />
+          </div>
+
+          {/* Header */}
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-400/20 text-amber-400">
+              <div className="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
                 <Receipt className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-white">
-                  Pratinjau Data Invoice
-                </h2>
-                <span className="text-[11px] text-amber-300 font-mono">
-                  Toko: {mainStore} • Dapur: {mainKitchen}
-                </span>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 leading-none">
+                    {invoiceNumber}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                    {mainStore}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  {mainKitchen} • {displayItems.length} Barang • {formatRupiah(totalJual)}
+                </p>
               </div>
             </div>
 
-            {/* Action Buttons: "Unduh DOCX", "Export PDF" & Close */}
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <button
-                onClick={handleDownloadDocx}
-                disabled={isExportingDocx}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-75 disabled:cursor-not-allowed text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-all active:scale-95 cursor-pointer"
-                title="Unduh File Word (.docx)"
-              >
-                <FileDown className="w-3.5 h-3.5 shrink-0 text-blue-400" />
-                <span className="hidden xs:inline">Unduh</span> DOCX
-              </button>
+            <button
+              onClick={onClose}
+              type="button"
+              className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-              <button
-                onClick={handleExport}
-                disabled={isExportingDocx}
-                className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 disabled:opacity-75 disabled:cursor-not-allowed text-slate-900 font-black text-xs sm:text-sm flex items-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer border border-amber-500/80"
-                title="Export Invoice ke PDF"
-              >
-                {isExportingDocx ? (
-                  <Loader2 className="w-4 h-4 animate-spin shrink-0 text-slate-900" />
-                ) : (
-                  <Printer className="w-4 h-4 stroke-[2.5] shrink-0" />
-                )}
-                <span>{isExportingDocx ? (exportStatusMsg || 'Mengolah PDF...') : 'Export / Cetak PDF'}</span>
-              </button>
+          {/* Body Content */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+            {/* Recipient & Meta Summary */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                  Penerima:
+                </span>
+                <span className="font-extrabold text-slate-900 block mt-0.5">
+                  {recipientName || mainKitchen}
+                </span>
+                <span className="text-[11px] text-slate-600 font-medium block">
+                  {recipientAddress || 'Banyuwangi'}
+                </span>
+              </div>
 
-              <button
-                onClick={onClose}
-                disabled={isExportingDocx}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
-                title="Tutup Modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                  Pembayaran:
+                </span>
+                <div className="mt-0.5 space-y-0.5 text-[11px]">
+                  <span className="font-bold text-slate-700 block">
+                    Bayar: <strong className="text-emerald-700">{formatRupiah(bayar)}</strong>
+                  </span>
+                  <span className="font-bold text-slate-700 block">
+                    Sisa: <strong className="text-rose-700">{formatRupiah(sisa)}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Scoped Items Table Preview */}
+            <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
+              <div className="px-3.5 py-2 bg-slate-100/80 border-b border-slate-200 text-[11px] font-black text-slate-700 uppercase tracking-wider flex justify-between">
+                <span>Rincian Barang</span>
+                <span>{displayItems.length} Item</span>
+              </div>
+
+              <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                {displayItems.map((item, idx) => (
+                  <div key={item.id || idx} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50">
+                    <div className="min-w-0 pr-2">
+                      <span className="font-bold text-slate-900 block truncate">{item.namaBarang}</span>
+                      <span className="text-[10px] text-slate-500">{item.qty} × {formatRupiah(item.hargaJual || item.hargaBeli || 0)}</span>
+                    </div>
+                    <span className="font-black text-slate-900 text-xs flex-shrink-0">
+                      {formatRupiah(parseIndonesianNumber(item.qty) * parseIndonesianNumber(item.hargaJual || item.hargaBeli || 0))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-black text-slate-900 uppercase">Total Invoice:</span>
+                <span className="text-base font-black text-indigo-700">{formatRupiah(totalJual)}</span>
+              </div>
             </div>
           </div>
 
-          {/* Pratinjau Content Body */}
-          <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-slate-50 text-slate-900 font-sans space-y-6">
-            {/* Active Export Status Banner */}
-            {isExportingDocx && (
-              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3 text-amber-900 text-xs sm:text-sm font-bold">
-                <Loader2 className="w-5 h-5 animate-spin text-amber-600 shrink-0" />
-                <div>
-                  <p className="font-extrabold text-amber-950">{exportStatusMsg || 'Sedang memproses PDF...'}</p>
-                  <p className="text-[11px] font-normal text-amber-800 mt-0.5">
-                    Proses konversi dapat memakan waktu beberapa detik di koneksi mobile. Mohon tidak menutup halaman ini.
-                  </p>
-                </div>
-              </div>
-            )}
+          {/* Action Buttons: Instant Background Export */}
+          <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center gap-2">
+            <button
+              type="button"
+              onClick={handleStartPdfExport}
+              className="w-full sm:flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs rounded-2xl shadow-md shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Cetak &amp; Export PDF (Browser Offline)</span>
+            </button>
 
-            {/* Success Fallback Download Banner */}
-            {pdfResult && !isExportingDocx && (
-              <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 font-sans shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-emerald-600 text-white shrink-0">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-extrabold text-xs sm:text-sm text-emerald-950">PDF Invoice Berhasil Dibuat!</p>
-                    <p className="text-[11px] text-emerald-800 mt-0.5">
-                      Jika file PDF belum otomatis terbuka di tab browser Anda, silakan klik tombol di samping.
-                    </p>
-                  </div>
-                </div>
-                <a
-                  href={pdfResult.url}
-                  download={pdfResult.fileName}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 shrink-0 border border-emerald-700/50"
-                >
-                  <Download className="w-4 h-4 shrink-0" />
-                  <span>Klik di sini untuk download PDF</span>
-                </a>
-              </div>
-            )}
-            {/* PDF Engine Selector Bar */}
-            <div className="bg-gradient-to-r from-slate-100 to-indigo-50/50 border border-slate-200 p-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-black text-slate-800">
-                      Mesin Cetak PDF:
-                    </span>
-                    {pdfEngine === 'client' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black flex items-center gap-1 border border-emerald-300/60">
-                        <Zap className="w-3 h-3 text-emerald-600 fill-emerald-600" />
-                        Browser Offline (UNLIMITED • No Limit)
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 text-[10px] font-black flex items-center gap-1 border border-sky-300/60">
-                        <Cloud className="w-3 h-3 text-sky-600" />
-                        CloudConvert Server
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10.5px] text-slate-500 mt-0.5">
-                    {pdfEngine === 'client'
-                      ? '⚡ Konversi langsung di HP/laptop tanpa batas kuota harian & tanpa server.'
-                      : '☁️ Konversi via CloudConvert API server.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200/80 shadow-2xs self-stretch sm:self-auto gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleSelectEngine('client')}
-                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    pdfEngine === 'client'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                  title="Cetak langsung di browser tanpa limit kuota"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Browser (No Limit)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectEngine('auto')}
-                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    pdfEngine === 'auto'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                  title="Konversi via CloudConvert"
-                >
-                  <Cloud className="w-3.5 h-3.5" />
-                  <span>CloudConvert</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Store & Recipient Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Card 1: Data Toko & Invoice */}
-              <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    INFORMASI TRANSAKSI
-                  </span>
-                  <span className="text-xs font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
-                    {invoiceNumber}
-                  </span>
-                </div>
-                <div className="text-xs space-y-1 text-slate-700">
-                  <p><strong className="text-slate-900">Toko:</strong> {mainStore}</p>
-                  <p><strong className="text-slate-900">Tanggal:</strong> {realTimeDate}</p>
-                  <p><strong className="text-slate-900">Jumlah Item:</strong> {displayItems.length} barang</p>
-                </div>
-              </div>
-
-              {/* Card 2: Data Penerima */}
-              <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    KEPADA YTH. (PENERIMA)
-                  </span>
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                </div>
-                <div className="text-xs space-y-1 text-slate-700">
-                  <p className="flex items-center gap-1.5 font-extrabold text-slate-900 text-sm">
-                    <User className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span>{recipientName || mainKitchen}</span>
-                  </p>
-                  <p className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span>{recipientAddress || 'Banyuwangi'}</span>
-                  </p>
-                  <p className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span>{recipientPhone || '-'}</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Table of Items */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-              <div className="px-4 py-3 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                  Rincian Barang / Pesanan
-                </h3>
-                <span className="text-[11px] text-slate-500 font-semibold">
-                  {displayItems.length} Item
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10px] tracking-wider">
-                      <th className="py-2.5 px-3 text-center w-10">NO</th>
-                      <th className="py-2.5 px-3 text-center w-16">QTY</th>
-                      <th className="py-2.5 px-3">NAMA BARANG</th>
-                      <th className="py-2.5 px-3 text-right w-28">HARGA</th>
-                      <th className="py-2.5 px-3 text-right w-32">JUMLAH</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
-                    {displayItems.map((item, idx) => {
-                      const q = parseIndonesianNumber(item.qty);
-                      const p = parseIndonesianNumber(item.hargaJual || item.hargaBeli || 0);
-                      const subtotalJual = q * p;
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/80">
-                          <td className="py-2.5 px-3 text-center font-bold text-slate-500">{idx + 1}</td>
-                          <td className="py-2.5 px-3 text-center font-extrabold text-slate-900">{q}</td>
-                          <td className="py-2.5 px-3 font-bold text-slate-900">
-                            {item.namaBarang}
-                            {item.catatan && (
-                              <span className="block text-[10px] text-slate-500 font-normal italic">
-                                *{item.catatan}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-semibold text-slate-700">
-                            {formatRupiah(p)}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-black text-slate-900">
-                            {formatRupiah(subtotalJual)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Total, Bayar, Sisa Summary Box */}
-            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="text-xs text-slate-500 font-medium space-y-0.5">
-                <p className="flex items-center gap-1 text-slate-700 font-bold">
-                  <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Status Pembayaran:</span>
-                </p>
-                <p>Pembayaran diatur saat konfirmasi modal sebelumnya.</p>
-              </div>
-
-              <div className="w-full sm:w-72 space-y-2 text-xs">
-                <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="font-bold text-slate-600">TOTAL:</span>
-                  <span className="font-black text-slate-900 text-sm">{formatRupiah(totalJual)}</span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-b border-slate-100 text-emerald-700 font-bold">
-                  <span>BAYAR:</span>
-                  <span>{formatRupiah(bayar)}</span>
-                </div>
-                <div className="flex justify-between items-center py-1 text-amber-700 font-black text-sm">
-                  <span>SISA:</span>
-                  <span>{formatRupiah(sisa)}</span>
-                </div>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={handleStartDocxExport}
+              className="w-full sm:w-auto py-3 px-4 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold text-xs rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <FileDown className="w-4 h-4 text-indigo-300" />
+              <span>Unduh DOCX</span>
+            </button>
           </div>
         </motion.div>
       </div>

@@ -99,39 +99,62 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs font-sans">
+      <div className="fixed inset-0 z-50 flex items-end justify-center no-print font-sans">
+        {/* Backdrop */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-200"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+        />
+
+        {/* Bottom Sheet Modal */}
+        <motion.div
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+          className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[88vh] z-10 border-t border-slate-200/80 overflow-hidden"
         >
+          {/* Mobile Drag Indicator */}
+          <div className="pt-3 pb-1 flex justify-center">
+            <div className="w-12 h-1.5 bg-slate-300 rounded-full" />
+          </div>
+
           {/* Header */}
-          <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-400/20 text-amber-400">
+              <div className="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
                 <FileText className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-extrabold text-sm sm:text-base text-white">
-                  Konfirmasi Data Invoice
+                <h3 className="text-sm sm:text-base font-black text-slate-900 leading-none">
+                  Data Penerima Invoice
                 </h3>
-                <p className="text-[11px] text-slate-400">
-                  Lengkapi data penerima & pembayaran sebelum preview
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  {storeName || items[0]?.toko} • {kitchenName || items[0]?.tujuanDapur} ({items.length} item)
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
               type="button"
-              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <form onSubmit={handleSubmit} className="p-5 space-y-3.5 overflow-y-auto">
+            {error && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
             {/* Input 1: Nama Penerima */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -140,18 +163,11 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
               </label>
               <input
                 type="text"
+                required
                 value={recipientName}
-                onChange={(e) => {
-                  setRecipientName(e.target.value);
-                  if (e.target.value.trim()) setError('');
-                }}
-                placeholder="e.g. Dapur Singojuruh / Ibu Maria"
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 transition-all ${
-                  error && !recipientName.trim()
-                    ? 'border-red-500 focus:ring-red-200 bg-red-50/50'
-                    : 'border-slate-300 focus:border-indigo-600 focus:ring-indigo-100 bg-slate-50 focus:bg-white'
-                }`}
-                autoFocus
+                onChange={(e) => setRecipientName(e.target.value)}
+                placeholder="Contoh: Dapur Rogojampi / Pak Budi"
+                className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:bg-white focus:outline-none"
               />
             </div>
 
@@ -159,96 +175,61 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                Alamat
+                Alamat Tujuan
               </label>
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="e.g. Banyuwangi"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:border-indigo-600 focus:ring-indigo-100 bg-slate-50 focus:bg-white transition-all"
+                placeholder="Contoh: Banyuwangi"
+                className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:bg-white focus:outline-none"
               />
             </div>
 
-            {/* Input 3: Nomor Telepon/HP */}
+            {/* Input 3: Telepon */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5 text-indigo-600" />
-                Nomor Telepon / HP
+                No. HP / Kontak
               </label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. 082229992371"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:border-indigo-600 focus:ring-indigo-100 bg-slate-50 focus:bg-white transition-all"
+                placeholder="082229992371"
+                className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:bg-white focus:outline-none"
               />
             </div>
 
-            {/* Input 4: Jumlah Bayar */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+            {/* Input 4: Nominal Bayar */}
+            <div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-100 space-y-2">
+              <label className="block text-xs font-bold text-indigo-950 flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
-                Jumlah Bayar (Rp)
+                Pembayaran Awal / DP (Rp):
               </label>
               <input
-                type="text"
+                type="number"
+                min="0"
+                max={totalAmount}
                 value={bayarInput}
-                onChange={(e) => {
-                  setBayarInput(e.target.value);
-                  const val = parseIndonesianNumber(e.target.value);
-                  if (val <= totalAmount) setError('');
-                }}
+                onChange={(e) => setBayarInput(e.target.value)}
                 placeholder="0"
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 transition-all ${
-                  error && parsedBayar > totalAmount
-                    ? 'border-red-500 focus:ring-red-200 bg-red-50/50'
-                    : 'border-slate-300 focus:border-indigo-600 focus:ring-indigo-100 bg-slate-50 focus:bg-white'
-                }`}
+                className="w-full text-sm font-black px-3 py-2 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:outline-none text-slate-900"
               />
-            </div>
-
-            {/* Error Banner */}
-            {error && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-red-700 text-xs font-bold">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Summary Box */}
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs font-medium">
-              <div className="flex justify-between text-slate-600">
-                <span>Total Transaksi:</span>
-                <span className="font-extrabold text-slate-900">{formatRupiah(totalAmount)}</span>
-              </div>
-              <div className="flex justify-between text-emerald-700">
-                <span>Jumlah Bayar:</span>
-                <span className="font-extrabold">{formatRupiah(parsedBayar)}</span>
-              </div>
-              <div className="flex justify-between text-slate-900 pt-1 border-t border-slate-200 font-bold">
-                <span>Sisa Pembayaran:</span>
-                <span className="font-black text-amber-600">{formatRupiah(calculatedSisa)}</span>
+              <div className="flex items-center justify-between text-[11px] font-bold pt-1 text-slate-600">
+                <span>Total: <strong className="text-slate-900">{formatRupiah(totalAmount)}</strong></span>
+                <span>Sisa: <strong className="text-rose-600">{formatRupiah(calculatedSisa)}</strong></span>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition-all cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-black text-xs flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer border border-amber-500/80"
-              >
-                <span>Lanjut ke Preview</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs rounded-2xl shadow-md shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+            >
+              <span>Lanjut ke Cetak Invoice</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </form>
         </motion.div>
       </div>

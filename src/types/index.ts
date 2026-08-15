@@ -54,3 +54,20 @@ export interface TextParseResult {
   tujuanDapur?: string;
   pemasok?: string;
 }
+
+export interface ExportHistoryItem {
+  id: string;
+  invoiceNumber: string;
+  fileName: string;
+  type?: 'pdf' | 'docx';
+  fileType?: 'pdf' | 'docx';
+  toko: string;
+  tujuanDapur: string;
+  tanggal: string;
+  itemCount?: number;
+  totalJual?: number;
+  totalAmount?: number;
+  pdfUrl?: string;
+  fileUrl?: string;
+  createdAt: string;
+}

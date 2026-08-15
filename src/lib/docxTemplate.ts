@@ -310,8 +310,7 @@ export async function fetchDocxTemplateBuffer(storeName: string): Promise<ArrayB
  */
 export async function exportInvoicePdf(
   options: ExportInvoiceOptions,
-  onProgress?: (statusMsg: string) => void,
-  forceEngine?: 'client' | 'cloudconvert' | 'auto'
+  onProgress?: (statusMsg: string) => void
 ): Promise<{ pdfBlob: Blob; pdfUrl: string; fileName: string }> {
   const { storeName, kitchenName } = options;
 
@@ -374,7 +373,7 @@ export async function exportInvoicePdf(
 
   const baseFileName = `Invoice_${storeName.replace(/\s+/g, '_')}_${kitchenName.replace(/\s+/g, '_')}_${rawDate}`;
 
-  // 4. Auto-compress template images in browser before uploading to Vercel/CloudConvert endpoint
+  // 4. Auto-compress template images in browser
   let finalDocxBlob: Blob = docxBlob;
   try {
     finalDocxBlob = await compressDocxImagesClient(docxBlob, onProgress);
@@ -382,119 +381,8 @@ export async function exportInvoicePdf(
     console.warn('[Client PDF Export] Browser image compression warning:', compressErr);
   }
 
-  // Check user preference for PDF rendering engine
-  const chosenEngine = forceEngine || (typeof window !== 'undefined' ? (localStorage.getItem('pdf_render_engine') || 'client') : 'client');
-  if (chosenEngine === 'client') {
-    return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
-  }
-
-  const finalArrayBufferDocx = await finalDocxBlob.arrayBuffer();
-  const finalSizeBytes = finalArrayBufferDocx.byteLength;
-  const finalSizeMB = (finalSizeBytes / (1024 * 1024)).toFixed(2);
-
-  console.log(`[Client PDF Export] Final DOCX size for upload: ${finalSizeBytes} bytes (${finalSizeMB} MB)`);
-
-  // Hard check against Vercel payload limit (4.5 MB)
-  if (finalSizeBytes > 4.2 * 1024 * 1024) {
-    console.warn(`Ukuran file (${finalSizeMB} MB) besar, beralih ke rendering PDF lokal di browser...`);
-    return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
-  }
-
-  let convertResponse: Response | null = null;
-  let attempt = 0;
-  const maxAttempts = 2; // 1 original + 1 retry
-
-  while (attempt < maxAttempts) {
-    attempt++;
-    try {
-      if (attempt > 1) {
-        onProgress?.('Koneksi terputus/lambat. Mencoba ulang pengiriman... (Percobaan 2)');
-        await new Promise((r) => setTimeout(r, 2000));
-      } else {
-        onProgress?.('Mengonversi ke PDF via CloudConvert...');
-      }
-
-      const pdfFileName = `${baseFileName}.pdf`;
-      const customKey = typeof window !== 'undefined' ? (localStorage.getItem('cloudconvert_custom_api_key') || '') : '';
-      const queryParams = new URLSearchParams({ fileName: pdfFileName });
-      if (customKey.trim()) queryParams.set('apiKey', customKey.trim());
-      const convertApiUrl = `/api/convert-to-pdf?${queryParams.toString()}`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for mobile networks
-
-      convertResponse = await fetch(convertApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/octet-stream',
-        },
-        body: finalArrayBufferDocx,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!convertResponse.ok) {
-        const errText = await convertResponse.text().catch(() => '');
-        let errorMsg = `HTTP ${convertResponse.status}: Gagal konversi PDF.`;
-        if (errText) {
-          try {
-            const errJson = JSON.parse(errText);
-            if (errJson.error) {
-              errorMsg = errJson.error;
-            } else {
-              errorMsg = `HTTP ${convertResponse.status}: ${errText}`;
-            }
-          } catch (_) {
-            errorMsg = `HTTP ${convertResponse.status}: ${errText}`;
-          }
-        }
-        throw new Error(errorMsg);
-      }
-
-      break; // Success
-    } catch (pdfErr: any) {
-      const isNetworkOrTimeout =
-        pdfErr.name === 'AbortError' ||
-        pdfErr.message?.includes('fetch') ||
-        pdfErr.message?.includes('Failed to fetch') ||
-        pdfErr.message?.includes('NetworkError') ||
-        pdfErr.message?.includes('502') ||
-        pdfErr.message?.includes('503') ||
-        pdfErr.message?.includes('504');
-
-      if (isNetworkOrTimeout && attempt < maxAttempts) {
-        console.warn(`[Client PDF Export] Attempt ${attempt} failed network/timeout:`, pdfErr.message);
-        continue;
-      }
-
-      console.warn('Konversi PDF via CloudConvert API gagal atau 500, mencoba fallback konversi PDF di browser:', pdfErr);
-      return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
-    }
-  }
-
-  if (!convertResponse || !convertResponse.ok) {
-    return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
-  }
-
-  onProgress?.('Mengunduh file PDF...');
-  const pdfBlob = await convertResponse.blob();
-  const pdfUrl = URL.createObjectURL(pdfBlob);
-  const fileName = `${baseFileName}.pdf`;
-
-  // Fallback direct save
-  try {
-    saveAs(pdfBlob, fileName);
-  } catch (e) {
-    console.warn('saveAs failed or blocked:', e);
-  }
-
-  onProgress?.('Selesai!');
-
-  return {
-    pdfBlob,
-    pdfUrl,
-    fileName,
-  };
+  // 5. 100% Client-Side PDF Generation (Unlimited, Fast, Offline)
+  return await renderDocxToPdfClientSide(finalDocxBlob, baseFileName, onProgress);
 }
 
 /**

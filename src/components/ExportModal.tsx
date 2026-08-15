@@ -10,6 +10,7 @@ interface ExportModalProps {
   onClose: () => void;
   orders: OrderItem[];
   selectedDate: string;
+  onExportSuccess?: (fileName: string) => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -17,6 +18,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onClose,
   orders,
   selectedDate,
+  onExportSuccess,
 }) => {
   const [exportScope, setExportScope] = useState<'selected_date' | 'all'>('selected_date');
 
@@ -27,76 +29,113 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     : orders;
 
   const handleExportExcel = () => {
-    exportToExcel(filteredOrders, `Rekap_Dapur_${exportScope === 'selected_date' ? selectedDate : 'Semua'}`);
+    const fileName = `Rekap_Dapur_${exportScope === 'selected_date' ? selectedDate : 'Semua'}.xlsx`;
+    exportToExcel(filteredOrders, fileName.replace('.xlsx', ''));
     onClose();
+    if (onExportSuccess) {
+      onExportSuccess(fileName);
+    }
   };
 
   const handleExportCSV = () => {
-    exportToCSV(filteredOrders, `Rekap_Dapur_${exportScope === 'selected_date' ? selectedDate : 'Semua'}`);
+    const fileName = `Rekap_Dapur_${exportScope === 'selected_date' ? selectedDate : 'Semua'}.csv`;
+    exportToCSV(filteredOrders, fileName.replace('.csv', ''));
     onClose();
+    if (onExportSuccess) {
+      onExportSuccess(fileName);
+    }
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs no-print">
+      <div className="fixed inset-0 z-50 flex items-end justify-center no-print font-sans">
+        {/* Backdrop */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+        />
+
+        {/* Bottom Sheet Modal */}
+        <motion.div
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+          className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[85vh] z-10 border-t border-slate-200/80 overflow-hidden"
         >
+          {/* Mobile Drag Indicator */}
+          <div className="pt-3 pb-1 flex justify-center">
+            <div className="w-12 h-1.5 bg-slate-300 rounded-full" />
+          </div>
+
           {/* Header */}
-          <div className="px-6 py-4 bg-gradient-to-r from-[#4E54C8] to-[#6366F1] text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Download className="w-5 h-5 text-indigo-200" />
-              <h2 className="text-base font-bold">Ekspor Laporan Data</h2>
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                <Download className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-black text-slate-900 leading-none">
+                  Ekspor Laporan Spreadsheet
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  Unduh data pesanan dalam format Excel / CSV
+                </p>
+              </div>
             </div>
-            <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 transition-colors text-white">
+            <button
+              onClick={onClose}
+              type="button"
+              className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="p-6 space-y-5">
+          <div className="p-5 space-y-4 overflow-y-auto">
             {/* Scope Selector */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
-                Pilih Cakupan Data
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
+                Pilih Cakupan Data:
               </label>
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setExportScope('selected_date')}
-                  className={`w-full p-3 rounded-xl border text-left text-xs font-medium flex items-center justify-between transition-all ${
+                  className={`p-3 rounded-2xl border-2 text-left text-xs font-medium flex items-center justify-between transition-all cursor-pointer ${
                     exportScope === 'selected_date'
-                      ? 'border-[#4E54C8] bg-indigo-50/70 text-[#4E54C8]'
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-xs'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <div>
-                    <div className="font-bold">Tanggal Aktif ({formatTanggal(selectedDate, false)})</div>
-                    <div className="text-[11px] text-slate-500">
-                      {orders.filter((o) => o.tanggal === selectedDate).length} pesanan tercatat
+                    <div className="font-extrabold">Tanggal Aktif</div>
+                    <div className="text-[11px] text-slate-500 font-semibold">
+                      {formatTanggal(selectedDate, false)} ({orders.filter((o) => o.tanggal === selectedDate).length} Item)
                     </div>
                   </div>
-                  {exportScope === 'selected_date' && <CheckCircle2 className="w-4 h-4 text-[#4E54C8]" />}
+                  {exportScope === 'selected_date' && <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setExportScope('all')}
-                  className={`w-full p-3 rounded-xl border text-left text-xs font-medium flex items-center justify-between transition-all ${
+                  className={`p-3 rounded-2xl border-2 text-left text-xs font-medium flex items-center justify-between transition-all cursor-pointer ${
                     exportScope === 'all'
-                      ? 'border-[#4E54C8] bg-indigo-50/70 text-[#4E54C8]'
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-xs'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <div>
-                    <div className="font-bold">Semua Riwayat Pesanan</div>
-                    <div className="text-[11px] text-slate-500">
-                      Total {orders.length} pesanan tersimpan
+                    <div className="font-extrabold">Semua Riwayat</div>
+                    <div className="text-[11px] text-slate-500 font-semibold">
+                      Total {orders.length} Pesanan
                     </div>
                   </div>
-                  {exportScope === 'all' && <CheckCircle2 className="w-4 h-4 text-[#4E54C8]" />}
+                  {exportScope === 'all' && <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />}
                 </button>
               </div>
             </div>
@@ -107,7 +146,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 type="button"
                 onClick={handleExportExcel}
                 disabled={filteredOrders.length === 0}
-                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex flex-col items-center justify-center gap-1.5 disabled:opacity-50"
+                className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex flex-col items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
                 <FileSpreadsheet className="w-5 h-5" />
                 <span>Export Excel (.xlsx)</span>
@@ -117,7 +156,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 type="button"
                 onClick={handleExportCSV}
                 disabled={filteredOrders.length === 0}
-                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-md transition-all flex flex-col items-center justify-center gap-1.5 disabled:opacity-50"
+                className="py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-black text-xs shadow-md transition-all flex flex-col items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
                 <FileCode className="w-5 h-5 text-indigo-300" />
                 <span>Export CSV</span>
